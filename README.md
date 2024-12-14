@@ -1,6 +1,14 @@
 # cbNP
 
-A python script which retrieves the current playing track from the Apple Music application on macOS and posts it to the provided webhook endpoint.
+A python script which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint.
+
+Meant to function on macOS. Only compiled for arm64 (M series chips). for x86_64, please compile from source using the following command:
+
+```bash
+pyinstaller --onefile cbNP.py
+```
+
+note: you will need to install the required dependencies and pyinstaller using pip before compiling.
 
 ## Usage
 
