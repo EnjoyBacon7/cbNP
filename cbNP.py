@@ -17,7 +17,7 @@ def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--endpoint", help="The endpoint to connect to.")
     parser.add_argument("-t", "--token", help="The API token to use.")
-    parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30)
+    parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30, type=int)
     return parser.parse_args()
 
 class Track:
@@ -32,11 +32,15 @@ class Track:
 
 def get_script(key):
     return f"""
-    tell application "Music"
-        if player state is not stopped then
-            return {key} of current track 
-        end if
-    end tell
+    if application "Music" is running then
+        tell application "Music"
+            if player state is not stopped then
+                return {key} of current track 
+            end if
+        end tell
+    else
+        return None
+    end if
     """
 
 def get_now_playing():
@@ -49,28 +53,35 @@ def get_now_playing():
     script = get_script("album")
     album = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
 
+    if name == "" or artist == "" or album == "":
+        return None
+
     script = """
-    tell application "Music"
-        try
-            if player state is not stopped then
-                tell artwork 1 of current track
-                    if format is JPEG picture then
-                        set imgFormat to ".jpg"
-                    else
-                        set imgFormat to ".png"
-                    end if
-                end tell
-                set rawData to (get raw data of artwork 1 of current track)
-                return rawData & "|" & imgFormat
-            else
-                return ""
-            end if
-        end try
-    end tell
+    if application "Music" is running then
+        tell application "Music"
+            try
+                if player state is not stopped then
+                    tell artwork 1 of current track
+                        if format is JPEG picture then
+                            set imgFormat to ".jpg"
+                        else
+                            set imgFormat to ".png"
+                        end if
+                    end tell
+                    set rawData to (get raw data of artwork 1 of current track)
+                    return rawData & "|" & imgFormat
+                else
+                    return ""
+                end if
+            end try
+        end tell
+    else
+        return ""
+    end if
     """
     artwork_result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
 
-    if artwork_result:
+    if artwork_result != "":
         try:
             raw_data, img_format = artwork_result.split("|")
 
@@ -83,6 +94,10 @@ def get_now_playing():
 
         except ValueError:
             print("Error parsing artwork data.")
+    else:
+        print("No artwork found.")
+        return None
+
 
     return Track(name, artist, album, raw_data)
 
@@ -133,10 +148,11 @@ async def main():
 
     while True:
         track = get_now_playing()
-        print(track)
+        if track is not None:
+            print(track)
+            threading.Thread(target=asyncio.run, args=(push_update(track),)).start()
 
-        threading.Thread(target=asyncio.run, args=(push_update(track),)).start()
-
+        print ("Sleeping for", args.interval, "seconds.")
         time.sleep(args.interval)
         
 
