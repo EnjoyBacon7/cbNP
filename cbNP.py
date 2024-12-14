@@ -9,16 +9,12 @@ import argparse
 import os
 import time
 import threading
+import rumps
+
+from helper import Command, exec_command
 
 ENDPOINT = ""
 API_TOK = ""
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--endpoint", help="The endpoint to connect to.")
-    parser.add_argument("-t", "--token", help="The API token to use.")
-    parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30, type=int)
-    return parser.parse_args()
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -30,132 +26,58 @@ class Track:
     def __str__(self):
         return f"{self.name} by {self.artist} from {self.album} ({len(self.artwork)})"
 
-def get_script(key):
-    return f"""
-    if application "Music" is running then
-        tell application "Music"
-            if player state is not stopped then
-                return {key} of current track 
-            end if
-        end tell
-    else
-        return None
-    end if
-    """
+class cbNPApp(rumps.App):
 
-def get_now_playing():
-    script = get_script("name")
-    name = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
+    def __init__(self):
+        super(cbNPApp, self).__init__("cbNP")
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-e", "--endpoint", help="The endpoint to connect to.")
+        parser.add_argument("-t", "--token", help="The API token to use.")
+        parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30, type=int)
+        parser.add_argument("-d", "--debug", help="Enable debug mode.", action="store_true")
+        self.args = parser.parse_args()
 
-    script = get_script("artist")
-    artist = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
+        self.timer = rumps.Timer(self.update, self.args.interval)
+        self.timer.start()
 
-    script = get_script("album")
-    album = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
+    @rumps.clicked("Update manually")
+    def update_manually(self):
+        self.update(None)
 
-    if name == "" or artist == "" or album == "":
-        return None
+    def update(self, _):
+        track = exec_command(Command.GET_CURRENT_TRACK)
+        artist = exec_command(Command.GET_CURRENT_ARTIST)
+        album = exec_command(Command.GET_CURRENT_ALBUM)
+        artwork = exec_command(Command.GET_CURRENT_ARTWORK)
 
-    script = """
-    if application "Music" is running then
-        tell application "Music"
-            try
-                if player state is not stopped then
-                    tell artwork 1 of current track
-                        if format is JPEG picture then
-                            set imgFormat to ".jpg"
-                        else
-                            set imgFormat to ".png"
-                        end if
-                    end tell
-                    set rawData to (get raw data of artwork 1 of current track)
-                    return rawData & "|" & imgFormat
-                else
-                    return ""
-                end if
-            end try
-        end tell
-    else
-        return ""
-    end if
-    """
-    artwork_result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True).stdout.strip()
+        if artwork != "":
+            try:
+                # Getting rid of all applescript bs formatting (and converting to binary)
+                raw_data = artwork[10:]
+                raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
+                raw_data = bytes.fromhex(raw_data)
+                artwork = raw_data
+            except ValueError:
+                print("Error parsing artwork data.")
 
-    if artwork_result != "":
-        try:
-            raw_data, img_format = artwork_result.split("|")
-
-            # Getting rid of all applescript bs formatting (and converting to binary)
-            raw_data = raw_data[10:]
-            raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
-            raw_data = bytes.fromhex(raw_data)
-            
-            img_format = img_format.strip().split()[1]
-
-        except ValueError:
-            print("Error parsing artwork data.")
-    else:
-        print("No artwork found.")
-        return None
-
-
-    return Track(name, artist, album, raw_data)
-
-def save_artwork(raw_data, img_format_extension):
-    try:
-
-        if not os.path.exists("/tmp/cbApps"):
-            os.makedirs("/tmp/cbApps", exist_ok=True)
-
-        tmp_folder = "/tmp/cbApps"
-        file_name = f"tmp_artwork{img_format_extension}"
-        newPath = os.path.join(tmp_folder, file_name)
-
-        with open(newPath, "wb") as file:
-            file.write(raw_data)
-        print(f"Album artwork saved as {newPath}")
-        return newPath
-    except Exception as e:
-        print(f"Error saving album artwork: {e}")
-        return None
-
-
-async def push_update(track):
-    async with websockets.connect(f"{ENDPOINT}?token={API_TOK}") as websocket:
-        # Meh
-        track.artwork = base64.b64encode(track.artwork).decode("utf-8")
-        track = track.__dict__
-        message = {
-            "type": "update",
-            "payload": track,
-            "auth": API_TOK
-        }
-        message = json.dumps(message)
-        await websocket.send(message)
-
-
-async def main():
-
-    args = get_args()
-    if not args.endpoint:
-        print("Please provide an endpoint.")
-        return
-    else:
-        global ENDPOINT
-        ENDPOINT = args.endpoint
-        global API_TOK
-        API_TOK = args.token
-
-    while True:
-        track = get_now_playing()
-        if track is not None:
-            print(track)
-            threading.Thread(target=asyncio.run, args=(push_update(track),)).start()
-
-        print ("Sleeping for", args.interval, "seconds.")
-        time.sleep(args.interval)
+            print(Track(track, artist, album, artwork))
         
+        threading.Thread(target=asyncio.run, args=(self.push_update(Track(track, artist, album, artwork)),)).start()
+
+    async def push_update(self, track):
+        async with websockets.connect(f"{self.args.endpoint}") as websocket:
+            # Meh
+            track.artwork = base64.b64encode(track.artwork).decode("utf-8")
+            track = track.__dict__
+            message = {
+                "type": "update",
+                "payload": track,
+                "auth": self.args.token
+            }
+            message = json.dumps(message)
+
+            await websocket.send(message)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cbNPApp().run()
