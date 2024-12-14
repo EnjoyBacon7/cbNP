@@ -4,7 +4,14 @@ A python script which retrieves the current playing track from the Apple Music a
 
 ## Usage
 
-Provide the ENDPOINT and API_TOK globals in the python file and run the script.
+Download the latest release from the relase page and run the executable.
+
+Required arguments:
+- `-e` - The endpoint to post the track information to.
+
+Optional arguments:
+- `-t` - The token to authenticate with the endpoint.
+- `-i` - The interval in seconds between updates. Default is 30 seconds.
 
 ## Endpoint
 

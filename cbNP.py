@@ -5,9 +5,20 @@ import websockets
 import asyncio
 import json
 import base64
+import argparse
+import os
+import time
+import threading
 
 ENDPOINT = ""
 API_TOK = ""
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", "--endpoint", help="The endpoint to connect to.")
+    parser.add_argument("-t", "--token", help="The API token to use.")
+    parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30)
+    return parser.parse_args()
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -109,11 +120,25 @@ async def push_update(track):
 
 
 async def main():
+
+    args = get_args()
+    if not args.endpoint:
+        print("Please provide an endpoint.")
+        return
+    else:
+        global ENDPOINT
+        ENDPOINT = args.endpoint
+        global API_TOK
+        API_TOK = args.token
+
     while True:
         track = get_now_playing()
         print(track)
-        await push_update(track)
-        input("Press enter to check again.")
+
+        threading.Thread(target=asyncio.run, args=(push_update(track),)).start()
+
+        time.sleep(args.interval)
+        
 
 
 if __name__ == "__main__":
