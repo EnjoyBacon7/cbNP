@@ -4,3 +4,4 @@
 /build
 cbNP.spec
 /dist
+__pycache__/
