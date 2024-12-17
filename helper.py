@@ -64,7 +64,7 @@ def get_args():
         "-i", 
         "--interval", 
         help="The interval in seconds to check for updates.", 
-        default=30, 
+        default=15, 
         type=int
     )
     parser.add_argument(
