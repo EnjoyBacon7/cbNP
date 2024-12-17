@@ -6,8 +6,17 @@ import base64
 import os
 import threading
 import rumps
+import sys
 
 from helper import Command, exec_command, get_args, SEPARATOR
+
+DEFAULT_PREF = {
+    "endpoint": "ws://localhost:8000",
+    "token": "your_token",
+    "interval": 15
+}
+
+PREF_PATH = sys._MEIPASS + "Pref.json"
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -33,6 +42,10 @@ class cbNPApp(rumps.App):
             rumps.MenuItem('Preferences', callback=self.open_preferences),
         ]
 
+        if not os.path.exists(PREF_PATH):
+            with open(PREF_PATH, "w") as f:
+                f.write(json.dumps(DEFAULT_PREF, indent=4))
+
         self.timer = rumps.Timer(self.update, self.args.interval)
         self.timer.start()
 
@@ -42,11 +55,10 @@ class cbNPApp(rumps.App):
         token = self.args.token
         interval = self.args.interval
 
-        def_text = f"""{{
-    "endpoint": "{endpoint}",
-    "token": "{token}",
-    "interval": {interval}
-}}"""
+        with open(PREF_PATH, "r") as f:
+            def_text = f.read()
+
+        print(def_text)
 
         pref = rumps.Window(
             message="Preferences",
@@ -62,6 +74,14 @@ class cbNPApp(rumps.App):
             self.args.endpoint = data["endpoint"]
             self.args.token = data["token"]
             self.args.interval = data["interval"]
+
+            with open(PREF_PATH, "w") as f:
+                data = {"endpoint": self.args.endpoint, "token": self.args.token, "interval": self.args.interval}
+                f.write(json.dumps(data, indent=4))
+
+            self.timer.stop()
+            self.timer = rumps.Timer(self.update, self.args.interval)
+            self.timer.start()
             
             
     
