@@ -1,20 +1,13 @@
-import subprocess
-import os
 import re
 import websockets
 import asyncio
 import json
 import base64
-import argparse
 import os
-import time
 import threading
 import rumps
 
-from helper import Command, exec_command
-
-ENDPOINT = ""
-API_TOK = ""
+from helper import Command, exec_command, get_args, SEPARATOR
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -30,25 +23,55 @@ class cbNPApp(rumps.App):
 
     def __init__(self):
         super(cbNPApp, self).__init__("cbNP")
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-e", "--endpoint", help="The endpoint to connect to.")
-        parser.add_argument("-t", "--token", help="The API token to use.")
-        parser.add_argument("-i", "--interval", help="The interval in seconds to check for updates.", default=30, type=int)
-        parser.add_argument("-d", "--debug", help="Enable debug mode.", action="store_true")
-        self.args = parser.parse_args()
+        
+        self.args = get_args()
+        
+        # Menu items (recognized by rumps)
+        self.menu = [
+            rumps.MenuItem('Update manually', callback=self.update_manually),
+            None,
+            rumps.MenuItem('Preferences', callback=self.open_preferences),
+        ]
 
         self.timer = rumps.Timer(self.update, self.args.interval)
         self.timer.start()
 
-    @rumps.clicked("Update manually")
+    def open_preferences(self, _):
+        
+        endpoint = self.args.endpoint
+        token = self.args.token
+        interval = self.args.interval
+
+        def_text = f"""{{
+    "endpoint": "{endpoint}",
+    "token": "{token}",
+    "interval": {interval}
+}}"""
+
+        pref = rumps.Window(
+            message="Preferences",
+            title="cbNP",
+            ok="Save",
+            cancel="Cancel",
+            default_text=def_text,
+        )
+
+        response = pref.run()
+        if response.clicked:
+            data = json.loads(response.text)
+            self.args.endpoint = data["endpoint"]
+            self.args.token = data["token"]
+            self.args.interval = data["interval"]
+            
+            
+    
     def update_manually(self):
         self.update(None)
 
     def update(self, _):
-        track = exec_command(Command.GET_CURRENT_TRACK)
-        artist = exec_command(Command.GET_CURRENT_ARTIST)
-        album = exec_command(Command.GET_CURRENT_ALBUM)
-        artwork = exec_command(Command.GET_CURRENT_ARTWORK)
+        data = exec_command(Command.GET_CURRENT_TRACK_BATCH, self.args.debug)
+
+        track, artist, album, artwork = data.split(SEPARATOR + ", ")
 
         if artwork != "":
             try:
