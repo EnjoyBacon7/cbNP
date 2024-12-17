@@ -2,6 +2,8 @@
 
 A python script which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint.
 
+It lives as a menubar application and is meant to run in the background.
+
 Meant to function on macOS. Only compiled for arm64 (M series chips). for x86_64, please compile from source using the following command:
 
 ```bash
