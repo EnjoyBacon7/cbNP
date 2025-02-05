@@ -2,13 +2,19 @@
 
 A python script which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint.
 
+<center>
+<img src="./assets/logo.png" alt="drawing" width="200"/>
+</center>
+
 It lives as a menu bar application and is meant to run in the background. This application uses AppleScript, it is only compatible with macOS.
 
 ## Installation
 
 ### From release
 
-Download the latest release from the release page and run the executable. Only compiled for arm64 (M series chips). For x86_64, please compile from source.
+Download the latest release from the release page and run the app. Only compiled for arm64 (M series chips). For x86_64, please compile from source.
+
+Note that OSX may block the application from running. To allow it, go to `System Preferences > Privacy & Security > Security` and click `Open Anyway`. Keep in mind that apart from my word, there is no garantee this code is safe, I encourage you to compile the source code yourself.
 
 ### From source
 
