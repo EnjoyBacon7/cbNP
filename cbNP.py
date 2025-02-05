@@ -19,8 +19,10 @@ DEFAULT_PREF = {
 # If running as app bundle, use the bundled Pref.json path. Else use the local one.
 if not hasattr(sys, '_MEIPASS'):
     PREF_PATH = "./Pref.json"
+    ICON_PATH = "assets/logo.png"
 else:
-    PREF_PATH = sys._MEIPASS + "Pref.json"
+    PREF_PATH = sys._MEIPASS + "/Pref.json"
+    ICON_PATH = sys._MEIPASS + "/logo.png"
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -35,14 +37,14 @@ class Track:
 class cbNPApp(rumps.App):
 
     def __init__(self):
-        super(cbNPApp, self).__init__("cbNP")
+        super(cbNPApp, self).__init__("cbNP", icon=ICON_PATH)
 
         self.track = None
         self.args = get_args()
         
         # Menu items (recognized by rumps)
         self.menu = [
-            rumps.MenuItem('No track playing', key='track'),
+            rumps.MenuItem('track'), # Seems like the "key" parameter does not work
             rumps.MenuItem('Update manually', callback=self.update_manually),
             None,
             rumps.MenuItem('Preferences', callback=self.open_preferences),
@@ -92,7 +94,17 @@ class cbNPApp(rumps.App):
     def update(self, _):
         data = exec_command(Command.GET_CURRENT_TRACK_BATCH, self.args.debug)
 
-        track, artist, album, artwork = data.split(SEPARATOR + ", ")
+        track = ""
+        artist = ""
+        album = ""
+        artwork = ""
+
+        try:
+            track, artist, album, artwork = data.split(SEPARATOR + ", ")
+        except ValueError:
+            print("Error parsing track data. Is Apple Music running?")
+            self.menu["track"].title = "No track playing"
+
 
         if artwork != "":
             try:
@@ -107,7 +119,7 @@ class cbNPApp(rumps.App):
             print(Track(track, artist, album, artwork))
 
         self.track = Track(track, artist, album, artwork)
-        self.menu['track'] = rumps.MenuItem(f"{track} by {artist}" if self.track else "No track playing", key='track')
+        self.menu["track"].title = f"{track} by {artist}"
 
         threading.Thread(target=asyncio.run, args=(self.push_update(Track(track, artist, album, artwork)),)).start()
 
