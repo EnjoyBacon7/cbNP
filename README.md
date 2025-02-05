@@ -40,6 +40,11 @@ notes:
 
 ## Usage
 
+<p align="center">
+<img src="./assets/Demo - 1.2.0.png" alt="drawing"/>
+</p>
+
+
 Running the menu bar application will not be discussed here.
 
 Running the executable or the python script will depend on the following arguments for configuration:
