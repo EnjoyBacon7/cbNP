@@ -46,7 +46,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='cbNP.app',
-    icon='cbNP-icon.icns',
+    icon='assets/logo.png,
     bundle_identifier=None,
     info_plist={
         'LSUIElement': True,
