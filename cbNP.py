@@ -16,7 +16,11 @@ DEFAULT_PREF = {
     "interval": 15
 }
 
-PREF_PATH = sys._MEIPASS + "Pref.json"
+# If running as app bundle, use the bundled Pref.json path. Else use the local one.
+if not hasattr(sys, '_MEIPASS'):
+    PREF_PATH = "./Pref.json"
+else:
+    PREF_PATH = sys._MEIPASS + "Pref.json"
 
 class Track:
     def __init__(self, name, artist, album, artwork):
@@ -32,11 +36,13 @@ class cbNPApp(rumps.App):
 
     def __init__(self):
         super(cbNPApp, self).__init__("cbNP")
-        
+
+        self.track = None
         self.args = get_args()
         
         # Menu items (recognized by rumps)
         self.menu = [
+            rumps.MenuItem('No track playing', key='track'),
             rumps.MenuItem('Update manually', callback=self.update_manually),
             None,
             rumps.MenuItem('Preferences', callback=self.open_preferences),
@@ -51,10 +57,6 @@ class cbNPApp(rumps.App):
         self.timer.start()
 
     def open_preferences(self, _):
-        
-        endpoint = self.args.endpoint
-        token = self.args.token
-        interval = self.args.interval
 
         with open(PREF_PATH, "r") as f:
             def_text = f.read()
@@ -84,9 +86,7 @@ class cbNPApp(rumps.App):
             self.timer = rumps.Timer(self.update, self.args.interval)
             self.timer.start()
             
-            
-    
-    def update_manually(self):
+    def update_manually(self, _):
         self.update(None)
 
     def update(self, _):
@@ -105,22 +105,28 @@ class cbNPApp(rumps.App):
                 print("Error parsing artwork data.")
 
             print(Track(track, artist, album, artwork))
-        
+
+        self.track = Track(track, artist, album, artwork)
+        self.menu['track'] = rumps.MenuItem(f"{track} by {artist}" if self.track else "No track playing", key='track')
+
         threading.Thread(target=asyncio.run, args=(self.push_update(Track(track, artist, album, artwork)),)).start()
 
     async def push_update(self, track):
-        async with websockets.connect(f"{self.args.endpoint}") as websocket:
-            # Meh
-            track.artwork = base64.b64encode(track.artwork).decode("utf-8")
-            track = track.__dict__
-            message = {
-                "type": "update",
-                "payload": track,
-                "auth": self.args.token
-            }
-            message = json.dumps(message)
+        try:
+            async with websockets.connect(f"{self.args.endpoint}") as websocket:
+                # Meh
+                track.artwork = base64.b64encode(track.artwork).decode("utf-8")
+                track = track.__dict__
+                message = {
+                    "type": "update",
+                    "payload": track,
+                    "auth": self.args.token
+                }
+                message = json.dumps(message)
 
-            await websocket.send(message)
+                await websocket.send(message)
+        except Exception as e:
+            print(e)
 
 
 if __name__ == "__main__":
