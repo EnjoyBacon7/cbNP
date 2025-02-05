@@ -5,7 +5,7 @@ a = Analysis(
     ['cbNP.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('assets/logo.png', './')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -46,7 +46,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='cbNP.app',
-    icon='assets/logo.png,
+    icon='assets/logo.png',
     bundle_identifier=None,
     info_plist={
         'LSUIElement': True,
