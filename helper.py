@@ -2,7 +2,7 @@ from enum import Enum
 import subprocess
 import argparse
 
-SEPARATOR = "++£"
+SEPARATOR = "++£" # BS separator to enable simple regex splitting applescript result (Meh...)
 
 class Command(Enum):
     GET_CURRENT_TRACK = "return name of current track"
