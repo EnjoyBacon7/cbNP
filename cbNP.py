@@ -11,12 +11,6 @@ import datetime
 
 from helper import Command, exec_command, get_args, SEPARATOR
 
-DEFAULT_PREF = {
-    "endpoint": "ws://localhost:8000",
-    "token": "your_token",
-    "interval": 15
-}
-
 HEARTBEAT = 45
 
 # If running as app bundle, use the bundled Pref.json path. Else use the local one.
@@ -111,7 +105,15 @@ class cbNPApp(rumps.App):
         # Creating a default preferences file if it doesn't exist
         if not os.path.exists(PREF_PATH):
             with open(PREF_PATH, "w") as f:
-                f.write(json.dumps(DEFAULT_PREF, indent=4))
+                f.write(
+                    json.dumps(
+                        {
+                            "endpoint": self.args.endpoint,
+                            "token": self.args.token,
+                            "interval": self.args.interval
+                        }, indent=4
+                    )
+                )
 
         self.websocket_conn = None
 
@@ -273,7 +275,6 @@ class cbNPApp(rumps.App):
                 await self.websocket_conn.send(message)
                 
             except websockets.exceptions.ConnectionClosed:
-                print(123)
                 self.log_error("Websocket connection is closed. Trying to reconnect.")
                 self.websocket_conn = None
                 self.connection_timer.start()
