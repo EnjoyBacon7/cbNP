@@ -1,5 +1,0 @@
-{
-    "endpoint": "ws://localhost:8000",
-    "token": "your_token",
-    "interval": 15
-}
