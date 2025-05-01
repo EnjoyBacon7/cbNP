@@ -1,6 +1,6 @@
 # cbNP
 
-A python script which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint. Available as a native macOS app.
+A macOS application which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint. Available as a native macOS app.
 
 <p align="center">
 <img src="./assets/logo.png" alt="drawing" width="200"/>
