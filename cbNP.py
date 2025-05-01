@@ -13,7 +13,7 @@ from helper import Command, exec_command, get_args, SEPARATOR
 
 HEARTBEAT = 45
 
-# If running as app bundle, use the bundled Pref.json path. Else use the local one.
+# If running as app bundle, use the bundled paths. Else use the local one.
 if not hasattr(sys, '_MEIPASS'):
     PREF_PATH = "./Pref.json"
     ICON_PATH = "assets/logo.png"
@@ -91,7 +91,7 @@ class cbNPApp(rumps.App):
         super(cbNPApp, self).__init__("cbNP", icon=ICON_PATH, quit_button=None)
 
         self.args = get_args()
-        
+
         # Menu items (recognized by rumps)
         self.menu = [
             rumps.MenuItem('track'), # Seems like the "key" parameter does not work
@@ -114,6 +114,12 @@ class cbNPApp(rumps.App):
                         }, indent=4
                     )
                 )
+        else:
+            with open(PREF_PATH, "r") as f:
+                data = json.loads(f.read())
+                self.args.endpoint = data["endpoint"]
+                self.args.token = data["token"]
+                self.args.interval = data["interval"]
 
         self.websocket_conn = None
 
@@ -129,14 +135,14 @@ class cbNPApp(rumps.App):
         """
 
         with open(PREF_PATH, "r") as f:
-            def_text = f.read()
+            cur_conf = f.read()
 
         pref = rumps.Window(
             message="Preferences",
             title="cbNP",
             ok="Save",
             cancel="Cancel",
-            default_text=def_text,
+            default_text=cur_conf,
         )
 
         # Open the window
@@ -145,24 +151,23 @@ class cbNPApp(rumps.App):
         # If saved
         if response.clicked:
 
-            data = json.loads(response.text)
-            self.args.endpoint = data["endpoint"]
-            self.args.token = data["token"]
-
-            # Reset interval timer if interval has changed and restart it only if it was running
-            if data["interval"] != self.args.interval:
+            try:
+                data = json.loads(response.text)
+                self.args.endpoint = data["endpoint"]
+                self.args.token = data["token"]
                 self.args.interval = data["interval"]
-                timer_state = self.interval_timer.is_running
-                self.interval_timer.stop()
-                self.interval_timer = rumps.Timer(self.update, self.args.interval)
-                if timer_state:
-                    self.interval_timer.start()
+                
+                self.interval_timer.interval = self.args.interval
 
-            with open(PREF_PATH, "w") as f:
-                data = {"endpoint": self.args.endpoint, "token": self.args.token, "interval": self.args.interval}
-                f.write(json.dumps(data, indent=4))
+                with open(PREF_PATH, "w") as f:
+                    f.write(json.dumps(data, indent=4))
+            except Exception as e:
+                self.log_error(f"Error saving preferences: {e}")
+                return
             
             self.log_info("New saved preferences: " + str(data))
+        
+        self.log_info("Preferences window closed.")
         
     def update_manually(self, _):
         """
@@ -186,7 +191,6 @@ class cbNPApp(rumps.App):
             return
 
         data = exec_command(Command.GET_CURRENT_TRACK_BATCH, self.args.debug)
-
         name = artist = album = artwork = ""
 
         try:
@@ -238,14 +242,15 @@ class cbNPApp(rumps.App):
             return
         
         try:
-            self.websocket_conn = await websockets.connect(f"{self.args.endpoint}")
+            self.websocket_conn = await websockets.connect(f"{self.args.endpoint}", max_size=None)
             # Once a connection has been established. Start the interval timers.
             self.log_info(f"Websocket connection established on {self.args.endpoint}")
             self.interval_timer.start()
             self.heartbeat_timer.start()
+            self.connection_timer.stop()
         except Exception as e:
             self.log_error(f"Error opening websocket connection: {e}")
-
+        
     async def push_update(self, track):
         """
         Sends an update message to the websocket server.
@@ -256,7 +261,11 @@ class cbNPApp(rumps.App):
         try:
             # Meh
             track.artwork = base64.b64encode(track.artwork).decode("utf-8")
+        except Exception as e:
+            self.log_error(f"Error encoding artwork: {e}")
+            track.artwork = ""
 
+        try:
             self.log_info(f"Sending update to websocket: {track}")
 
             track = track.__dict__
@@ -269,21 +278,16 @@ class cbNPApp(rumps.App):
 
             # TODO: Both for heartbeat and update This is a mess of exceptions
             message = json.dumps(message)
-            try:
-                if self.websocket_conn is None:
-                    raise websockets.exceptions.ConnectionClosed
-                await self.websocket_conn.send(message)
-                
-            except websockets.exceptions.ConnectionClosed:
-                self.log_error("Websocket connection is closed. Trying to reconnect.")
-                self.websocket_conn = None
-                self.connection_timer.start()
-                return
+
+            self.log_info(f"Message size: {sys.getsizeof(message) / 1024} KB")
+            await self.websocket_conn.send(message)
 
         except Exception as e:
-            self.log_error(f"Error sending update to websocket: {e}. Naïvely assuming the connection is closed.")
             self.websocket_conn = None
             self.connection_timer.start()
+            self.interval_timer.stop()
+            self.heartbeat_timer.stop()
+            self.log_error(f"Error sending update to websocket: {e}")
 
     async def push_heartbeat(self):
         """
@@ -334,7 +338,8 @@ class cbNPApp(rumps.App):
         """
         print(i)
         with open(LOG_PATH, "a") as f:
-            f.write(f"{datetime.datetime.now()} - INFO: {i}\n")
+            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"{time} - INFO: {i}\n")
 
     def log_warning(self, w):
         """
@@ -345,7 +350,8 @@ class cbNPApp(rumps.App):
         """
         print(w)
         with open(LOG_PATH, "a") as f:
-            f.write(f"{datetime.datetime.now()} - WARNING: {w}\n")
+            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"{time} - WARNING: {w}\n")
 
     def log_error(self, e, display=True):
         """
@@ -357,7 +363,8 @@ class cbNPApp(rumps.App):
         """
         print(e)
         with open(LOG_PATH, "a") as f:
-            f.write(f"{datetime.datetime.now()} - ERROR: {e}\n")
+            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"{time} - ERROR: {e}\n")
         if display:
             err_menuitem = rumps.MenuItem('err')
             err_menuitem.title = f'Error: {e}'
