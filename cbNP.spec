@@ -51,6 +51,7 @@ app = BUNDLE(
     info_plist={
         'LSUIElement': True,
         'LSBackgroundOnly': True,
-        'NSUIElement': True
+        'NSUIElement': True,
+        'CFBundleShortVersionString': '2.0.0',
     },
 )
