@@ -56,6 +56,7 @@ class cbNPApp(rumps.App):
 
     Attributes:
         args (argparse.Namespace): The command line arguments.
+        loop (asyncio.AbstractEventLoop): The asyncio event loop.
         menu (list): The rumps menu items.
         websocket_conn (websockets.WebSocketClientProtocol): The websocket connection.
         interval_timer (rumps.Timer): The interval timer for updating the track.
@@ -91,6 +92,9 @@ class cbNPApp(rumps.App):
         super(cbNPApp, self).__init__("cbNP", icon=ICON_PATH, quit_button=None)
 
         self.args = get_args()
+
+        self.loop = asyncio.new_event_loop()
+        threading.Thread(target=self.loop.run_forever, daemon=True).start()
 
         # Menu items (recognized by rumps)
         self.menu = [
@@ -175,12 +179,6 @@ class cbNPApp(rumps.App):
         """
         self.update(None)
 
-    def connect(self, _):
-        """
-        Tries to open a websocket connection.
-        """
-        asyncio.run(self.open_conn(None))
-
     def update(self, _):
         """
         Updates the track and sends it to the server.
@@ -213,81 +211,63 @@ class cbNPApp(rumps.App):
 
         self.menu["track"].title = f"{name} by {artist}"
 
-        asyncio.run(self.push_update(Track(name, artist, album, artwork)))
+        future = asyncio.run_coroutine_threadsafe(
+            self.push_update(Track(name, artist, album, artwork)),
+            self.loop
+        )
 
-    def heartbeat(self, _):
-        if self.websocket_conn is not None:
-            asyncio.run(self.push_heartbeat())
-
-    def exit_application(self, _): # This fails but I can't be bothered to fix it (TODO)
-        asyncio.run(self.close_conn_quit())
-
-    async def close_conn_quit(self):
-        self.interval_timer.stop()
-        self.heartbeat_timer.stop()
-        await self.close_conn()
-        rumps.quit_application()
-
-    """ ----------------------------------------------------- """
-    """ -------------- Websocket methods -------------------- """
-    """ ----------------------------------------------------- """
-
-    async def open_conn(self, _):
-        """
-        Opens a websocket connection to the server and starts the interval timers.
-        """
-        if self.websocket_conn is not None:
-            self.log_info("Websocket connection already open.")
-            self.connection_timer.stop()
-            return
-        
         try:
-            self.websocket_conn = await websockets.connect(f"{self.args.endpoint}", max_size=None)
-            # Once a connection has been established. Start the interval timers.
-            self.log_info(f"Websocket connection established on {self.args.endpoint}")
-            self.interval_timer.start()
-            self.heartbeat_timer.start()
-            self.connection_timer.stop()
-        except Exception as e:
-            self.log_error(f"Error opening websocket connection: {e}")
-        
-    async def push_update(self, track):
-        """
-        Sends an update message to the websocket server.
-
-        Args:
-            track (Track): The track object to send.
-        """
-        try:
-            # Meh
-            track.artwork = base64.b64encode(track.artwork).decode("utf-8")
-        except Exception as e:
+            result = future.result()
+        except TypeError as e:
             self.log_error(f"Error encoding artwork: {e}")
-            track.artwork = ""
-
-        try:
-            self.log_info(f"Sending update to websocket: {track}")
-
-            track = track.__dict__
-            message = {
-                "type": "update",
-                "payload": track,
-                "auth": self.args.token
-            }
-
-
-            # TODO: Both for heartbeat and update This is a mess of exceptions
-            message = json.dumps(message)
-
-            self.log_info(f"Message size: {sys.getsizeof(message) / 1024} KB")
-            await self.websocket_conn.send(message)
-
-        except Exception as e:
+        except websockets.exceptions.ConnectionClosed as e:
             self.websocket_conn = None
             self.connection_timer.start()
             self.interval_timer.stop()
             self.heartbeat_timer.stop()
             self.log_error(f"Error sending update to websocket: {e}")
+
+    def heartbeat(self, _):
+        if self.websocket_conn is not None:
+            asyncio.run_coroutine_threadsafe(self.push_heartbeat(), self.loop)
+
+    def exit_application(self, _): # This fails but I can't be bothered to fix it (TODO)
+        asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
+
+    """ ----------------------------------------------------- """
+    """ -------------- Websocket methods -------------------- """
+    """ ----------------------------------------------------- """
+
+    def connect(self, _):
+        """
+        Tries to open a websocket connection.
+        """
+        if self.websocket_conn is not None:
+            self.log_info("Websocket connection already open.")
+            self.connection_timer.stop()
+            return
+
+        future = asyncio.run_coroutine_threadsafe(self.open_conn(None), self.loop)
+        try:
+            future.result()
+        except Exception as e:
+            self.log_error(f"Error opening websocket connection: {e}. Retrying...")
+            return
+
+        try:
+            # Once a connection has been established. Start the interval timers.
+            self.log_info(f"Websocket connection established on {self.args.endpoint}")
+            self.interval_timer.start()
+            self.heartbeat_timer.start()
+            self.connection_timer.stop()
+            self.log_info("Timers started.")
+        except Exception as e:
+            self.log_error(f"Error starting timers: {e}. Retrying...")
+            self.connection_timer.start()
+            self.interval_timer.stop()
+            self.heartbeat_timer.stop()
+            self.websocket_conn = None
+            return
 
     async def push_heartbeat(self):
         """
@@ -315,6 +295,48 @@ class cbNPApp(rumps.App):
         except Exception as e:
             self.log_error(f"Error sending heartbeat to websocket: {e}")
 
+    async def open_conn(self, _):
+        """
+        Opens a websocket connection to the server and starts the interval timers.
+        """        
+        try:
+            self.websocket_conn = await websockets.connect(f"{self.args.endpoint}", max_size=None)
+        except Exception as e:
+            raise e
+        
+    async def push_update(self, track):
+        """
+        Sends an update message to the websocket server.
+
+        Args:
+            track (Track): The track object to send.
+        """
+        try:
+            # Meh
+            track.artwork = base64.b64encode(track.artwork).decode("utf-8")
+        except Exception as e:
+            raise e
+
+        try:
+            self.log_info(f"Sending update to websocket: {track}")
+
+            track = track.__dict__
+            message = {
+                "type": "update",
+                "payload": track,
+                "auth": self.args.token
+            }
+
+
+            # TODO: Both for heartbeat and update This is a mess of exceptions
+            message = json.dumps(message)
+
+            self.log_info(f"Message size: {sys.getsizeof(message) / 1024} KB")
+            await self.websocket_conn.send(message)
+
+        except Exception as e:
+            raise e
+
     async def close_conn(self):
         """
         Closes the class's websocket connection.
@@ -324,6 +346,12 @@ class cbNPApp(rumps.App):
             await self.websocket_conn.close()
         except Exception as e:
             self.log_error(f"Error closing websocket: {e}")
+
+    async def close_conn_quit(self):
+        self.interval_timer.stop()
+        self.heartbeat_timer.stop()
+        await self.close_conn()
+        rumps.quit_application()
 
     """ ----------------------------------------------------- """
     """ --------------- Logging methods --------------------- """
