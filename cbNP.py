@@ -13,7 +13,7 @@ from helper import Command, exec_command, get_args, SEPARATOR
 
 HEARTBEAT = 45
 
-# If running as app bundle, use the bundled paths. Else use the local one.
+# If running as app bundle, use the bundled paths. Else use local one.
 if not hasattr(sys, '_MEIPASS'):
     PREF_PATH = "./Pref.json"
     ICON_PATH = "assets/logo.png"
