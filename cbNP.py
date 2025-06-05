@@ -102,7 +102,7 @@ class cbNPApp(rumps.App):
             rumps.MenuItem('Update manually', callback=self.update_manually),
             None,
             rumps.MenuItem('Preferences', callback=self.open_preferences),
-            "v2.0.0",
+            "v2.1.0",
             rumps.MenuItem('Quit', callback=self.exit_application)
         ]
 
