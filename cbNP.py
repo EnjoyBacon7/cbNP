@@ -243,7 +243,7 @@ class cbNPApp(rumps.App):
             self.connection_timer.start()
             self.interval_timer.stop()
             self.heartbeat_timer.stop()
-            self.log_error(f"Error sending update to websocket: {e}")
+            self.log_error(f"Error sending heartbeat to websocket: {e}")
 
     def exit_application(self, _): # This fails but I can't be bothered to fix it (TODO)
         asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
@@ -287,24 +287,20 @@ class cbNPApp(rumps.App):
         """
         Sends a heartbeat message to the websocket server.
         """
+        message = {
+            "type": "heartbeat"
+        }
+        message = json.dumps(message)
+
+        self.log_info(f"Sending heartbeat to websocket")
+
         try:
-            message = {
-                "type": "heartbeat"
-            }
-            message = json.dumps(message)
-
-            self.log_info(f"Sending heartbeat to websocket")
-
-            try:
-                if self.websocket_conn is None:
-                    raise websockets.exceptions.ConnectionClosed
-                await self.websocket_conn.send(message)
-                
-            except Exception as e:
-                raise e
-
+            if self.websocket_conn is None:
+                raise websockets.exceptions.ConnectionClosed
+            await self.websocket_conn.send(message)
+            
         except Exception as e:
-            self.log_error(f"Error sending heartbeat to websocket: {e}")
+            raise e
 
     async def open_conn(self, _):
         """
