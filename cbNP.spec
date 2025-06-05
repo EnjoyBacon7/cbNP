@@ -52,6 +52,6 @@ app = BUNDLE(
         'LSUIElement': True,
         'LSBackgroundOnly': True,
         'NSUIElement': True,
-        'CFBundleShortVersionString': '2.0.0',
+        'CFBundleShortVersionString': '2.1.0',
     },
 )
