@@ -186,6 +186,7 @@ class cbNPApp(rumps.App):
 
         # Arbitrary check TODO
         if self.websocket_conn is None:
+            self.log_warning("Websocket connection is not open. Trying to connect...")
             return
 
         data = exec_command(Command.GET_CURRENT_TRACK_BATCH, self.args.debug)
@@ -228,8 +229,21 @@ class cbNPApp(rumps.App):
             self.log_error(f"Error sending update to websocket: {e}")
 
     def heartbeat(self, _):
-        if self.websocket_conn is not None:
-            asyncio.run_coroutine_threadsafe(self.push_heartbeat(), self.loop)
+        if self.websocket_conn is None:
+            self.log_warning("Websocket connection is not open. Trying to connect...")
+            return
+
+        future = asyncio.run_coroutine_threadsafe(self.push_heartbeat(), self.loop)
+        try:
+            result = future.result()
+        except TypeError as e:
+            self.log_error(f"Error encoding artwork: {e}")
+        except websockets.exceptions.ConnectionClosed as e:
+            self.websocket_conn = None
+            self.connection_timer.start()
+            self.interval_timer.stop()
+            self.heartbeat_timer.stop()
+            self.log_error(f"Error sending update to websocket: {e}")
 
     def exit_application(self, _): # This fails but I can't be bothered to fix it (TODO)
         asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
@@ -286,11 +300,8 @@ class cbNPApp(rumps.App):
                     raise websockets.exceptions.ConnectionClosed
                 await self.websocket_conn.send(message)
                 
-            except websockets.exceptions.ConnectionClosed:
-                self.log_error("Websocket connection is closed. Trying to reconnect.")
-                self.websocket_conn = None
-                self.connection_timer.start()
-                return
+            except Exception as e:
+                raise e
 
         except Exception as e:
             self.log_error(f"Error sending heartbeat to websocket: {e}")
