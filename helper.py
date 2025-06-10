@@ -29,12 +29,14 @@ MUSIC_FIELDS = {
     "track": MusicField("track", "trackName", "name of current track"),
     "artist": MusicField("artist", "trackArtist", "artist of current track"),
     "album": MusicField("album", "trackAlbum", "album of current track"),
+    "id": MusicField("id", "trackId", "id of current track as string"),
     "artwork": MusicField("artwork", "artworkData", "get raw data of artwork 1 of current track", append_sep=False),
 }
 SPOTIFY_FIELDS = {
     "track": MusicField("track", "trackName", "name of current track"),
     "artist": MusicField("artist", "trackArtist", "artist of current track"),
     "album": MusicField("album", "trackAlbum", "album of current track"),
+    "id": MusicField("id", "trackId", "id of current track as string"),
     "artwork": MusicField("artwork", "artworkData", "get artwork url of current track", append_sep=False),
 }
 fields_map = {
@@ -71,9 +73,6 @@ def exec_command(fields, media_player, debug=False):
     ARGS = ["osascript", "-e", script]
 
     output = subprocess.run(ARGS, capture_output=True, text=True)
-
-    if output.stderr:
-        print(output.stderr)
 
     if debug:
         print(script)
