@@ -8,8 +8,9 @@ import threading
 import rumps
 import sys
 import datetime
+import requests
 
-from helper import Command, exec_command, get_args, SEPARATOR
+from helper import exec_command, get_args, SEPARATOR
 
 HEARTBEAT = 45
 
@@ -114,7 +115,8 @@ class cbNPApp(rumps.App):
                         {
                             "endpoint": self.args.endpoint,
                             "token": self.args.token,
-                            "interval": self.args.interval
+                            "interval": self.args.interval,
+                            "media_player": self.args.media_player
                         }, indent=4
                     )
                 )
@@ -124,6 +126,7 @@ class cbNPApp(rumps.App):
                 self.args.endpoint = data["endpoint"]
                 self.args.token = data["token"]
                 self.args.interval = data["interval"]
+                self.args.media_player = data["media_player"]
 
         self.websocket_conn = None
 
@@ -160,6 +163,7 @@ class cbNPApp(rumps.App):
                 self.args.endpoint = data["endpoint"]
                 self.args.token = data["token"]
                 self.args.interval = data["interval"]
+                self.args.media_player = data["media_player"]
                 
                 self.interval_timer.interval = self.args.interval
 
@@ -189,17 +193,20 @@ class cbNPApp(rumps.App):
             self.log_warning("Websocket connection is not open. Trying to connect...")
             return
 
-        data = exec_command(Command.GET_CURRENT_TRACK_BATCH, self.args.debug)
+        data = exec_command(["track", "artist", "album", "artwork"], self.args.media_player, self.args.debug)
         name = artist = album = artwork = ""
 
         try:
             name, artist, album, artwork = data.split(SEPARATOR + ", ")
         except ValueError:
-            self.log_error(f"Error parsing track data. Is Apple Music running?")
+            self.log_error(f"Error parsing track data. Is {self.args.media_player} running?")
             self.menu["track"].title = "No track playing"
             return
 
-        if artwork != "":
+        # TODO: Consolidate artwork handling. Spotify returns a URL, Music returns raw data.
+        if artwork.startswith("http"):
+            artwork = requests.get(artwork).content
+        else:
             try:
                 # Getting rid of all applescript bs formatting (and converting to binary)
                 raw_data = artwork[10:]
