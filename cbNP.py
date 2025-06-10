@@ -38,9 +38,9 @@ class Track:
         name (str): The name of the track.
         artist (str): The artist of the track.
         album (str): The album of the track.
-        artwork (bytes): The artwork
+        artwork (str): The base64 encoded artwork of the track.
     """
-    def __init__(self, name, artist, album, artwork: bytes, id=None):
+    def __init__(self, name, artist, album, artwork, id=None):
         self.name = name
         self.artist = artist
         self.album = album
@@ -212,18 +212,24 @@ class cbNPApp(rumps.App):
         if current_track == None or current_track.id != id:
             # TODO: Consolidate artwork handling. Spotify returns a URL, Music returns raw data.
             if artwork == "missing value":
-                artwork = b''
+                artwork = ''
             elif artwork.startswith("http"):
-                artwork_raw = requests.get(artwork).content
-                artwork = bytes(artwork_raw)
+                try:
+                    artwork = requests.get(artwork).content
+                    artwork = bytes(artwork)
+                    artwork = base64.b64encode(artwork).decode("utf-8")
+                except Exception as e:
+                    self.log_error(f"Error fetching or encoding artwork: {e}")
+                    artwork = ''
             else:
                 try:
                     # Getting rid of all applescript bs formatting (and converting to binary)
                     raw_data = artwork[10:]
                     raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
                     artwork = bytes.fromhex(raw_data)
-                except ValueError:
-                    self.log_error(f"Error parsing artwork data")
+                    artwork = base64.b64encode(artwork).decode("utf-8")
+                except ValueError as e:
+                    self.log_error(f"Error parsing or encoding artwork data: {e}")
 
             current_track = Track(name, artist, album, artwork, id)
             self.menu["track"].title = f"{name} by {artist}"
@@ -334,12 +340,6 @@ class cbNPApp(rumps.App):
         Args:
             track (Track): The track object to send.
         """
-        try:
-            # Meh
-            track.artwork = base64.b64encode(track.artwork).decode("utf-8")
-        except Exception as e:
-            raise e
-
         try:
             self.log_info(f"Sending update to websocket: {track}")
             track = track.__dict__
