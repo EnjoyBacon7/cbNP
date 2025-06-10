@@ -14,6 +14,8 @@ from helper import exec_command, get_args, SEPARATOR
 
 HEARTBEAT = 45
 
+current_track = None
+
 # If running as app bundle, use the bundled paths. Else use local one.
 if not hasattr(sys, '_MEIPASS'):
     PREF_PATH = "./Pref.json"
@@ -38,14 +40,15 @@ class Track:
         album (str): The album of the track.
         artwork (bytes): The artwork
     """
-    def __init__(self, name, artist, album, artwork):
+    def __init__(self, name, artist, album, artwork: bytes, id=None):
         self.name = name
         self.artist = artist
         self.album = album
         self.artwork = artwork
+        self.id = id
 
     def __str__(self):
-        return f"{self.name} by {self.artist} from {self.album} ({len(self.artwork)})"
+        return f"{self.name} by {self.artist} from {self.album} ({len(self.artwork)}) - {self.id})"
 
 """ ----------------------------------------------- """
 """ --------------- App Class --------------------- """
@@ -193,34 +196,40 @@ class cbNPApp(rumps.App):
             self.log_warning("Websocket connection is not open. Trying to connect...")
             return
 
-        data = exec_command(["track", "artist", "album", "artwork"], self.args.media_player, self.args.debug)
-        name = artist = album = artwork = ""
+        # TODO: Since artwork may be raw data, a separator cannot be added at the end. This means it MUST be the last field.
+        data = exec_command(["track", "artist", "album", "id", "artwork"], self.args.media_player, self.args.debug)
+        name = artist = album = artwork = id = ""
 
         try:
-            name, artist, album, artwork = data.split(SEPARATOR + ", ")
-        except ValueError:
-            self.log_error(f"Error parsing track data. Is {self.args.media_player} running?")
+            name, artist, album, id, artwork = data.split(SEPARATOR + ", ")
+        except ValueError as e:
+            self.log_error(f"Error parsing track data. Is {self.args.media_player} running? Error: {e}")
             self.menu["track"].title = "No track playing"
             return
+        
+        # Check if the track id is the same as the current track id
+        global current_track
+        if current_track == None or current_track.id != id:
+            # TODO: Consolidate artwork handling. Spotify returns a URL, Music returns raw data.
+            if artwork == "missing value":
+                artwork = b''
+            elif artwork.startswith("http"):
+                artwork_raw = requests.get(artwork).content
+                artwork = bytes(artwork_raw)
+            else:
+                try:
+                    # Getting rid of all applescript bs formatting (and converting to binary)
+                    raw_data = artwork[10:]
+                    raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
+                    artwork = bytes.fromhex(raw_data)
+                except ValueError:
+                    self.log_error(f"Error parsing artwork data")
 
-        # TODO: Consolidate artwork handling. Spotify returns a URL, Music returns raw data.
-        if artwork.startswith("http"):
-            artwork = requests.get(artwork).content
-        else:
-            try:
-                # Getting rid of all applescript bs formatting (and converting to binary)
-                raw_data = artwork[10:]
-                raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
-                raw_data = bytes.fromhex(raw_data)
-                artwork = raw_data
-            except ValueError:
-                self.log_error(f"Error parsing artwork data")
-
-
-        self.menu["track"].title = f"{name} by {artist}"
+            current_track = Track(name, artist, album, artwork, id)
+            self.menu["track"].title = f"{name} by {artist}"
 
         future = asyncio.run_coroutine_threadsafe(
-            self.push_update(Track(name, artist, album, artwork)),
+            self.push_update(Track(current_track.name, current_track.artist, current_track.album, current_track.artwork, current_track.id)),
             self.loop
         )
 
@@ -333,7 +342,6 @@ class cbNPApp(rumps.App):
 
         try:
             self.log_info(f"Sending update to websocket: {track}")
-
             track = track.__dict__
             message = {
                 "type": "update",
