@@ -4,30 +4,66 @@ import argparse
 
 SEPARATOR = "++£" # BS separator to enable simple regex splitting applescript result (Meh...)
 
-class Command(Enum):
-    GET_CURRENT_TRACK = "return name of current track"
-    GET_CURRENT_ARTIST = "return artist of current track"
-    GET_CURRENT_ALBUM = "return album of current track"
-    GET_CURRENT_ARTWORK = "return get raw data of artwork 1 of current track"
-    # AppleScript is slow, so a batch command is the only way to ensure that the data is consistent
-    GET_CURRENT_TRACK_BATCH = f"""
-            set trackName to name of current track
-            set trackArtist to artist of current track
-            set trackAlbum to album of current track
-            set artworkData to get raw data of artwork 1 of current track
-            set trackName to trackName & "{SEPARATOR}"
-            set trackArtist to trackArtist & "{SEPARATOR}"
-            set trackAlbum to trackAlbum & "{SEPARATOR}"
-            return {{trackName, trackArtist, trackAlbum, artworkData}}
-    """
+SEPARATOR = "␟"
 
+class MusicField:
+    def __init__(self, key, var, script, append_sep=True):
+        self.key = key
+        self.var = var
+        self.script = script
+        self.append_sep = append_sep
 
-def exec_command(command, debug=False):
+    def declare(self):
+        return f"set {self.var} to {self.script}"
+
+    def append_separator(self):
+        if self.append_sep:
+            return f"set {self.var} to {self.var} & \"{SEPARATOR}\""
+        return ""
+
+    def return_var(self):
+        return self.var
+
+# Define available fields
+MUSIC_FIELDS = {
+    "track": MusicField("track", "trackName", "name of current track"),
+    "artist": MusicField("artist", "trackArtist", "artist of current track"),
+    "album": MusicField("album", "trackAlbum", "album of current track"),
+    "artwork": MusicField("artwork", "artworkData", "get raw data of artwork 1 of current track", append_sep=False),
+}
+SPOTIFY_FIELDS = {
+    "track": MusicField("track", "trackName", "name of current track"),
+    "artist": MusicField("artist", "trackArtist", "artist of current track"),
+    "album": MusicField("album", "trackAlbum", "album of current track"),
+    "artwork": MusicField("artwork", "artworkData", "get artwork url of current track", append_sep=False),
+}
+fields_map = {
+    "Music": MUSIC_FIELDS,
+    "Spotify": SPOTIFY_FIELDS
+}
+
+def make_script_command(fields, media_player):
+
+    fields_cmds = fields_map.get(media_player, {})
+
+    commands = []
+    for key in fields:
+        field = fields_cmds.get(key)
+        commands.append(field.declare())
+    for key in fields:
+        sep = fields_cmds.get(key).append_separator()
+        if sep:
+            commands.append(sep)
+    return_vars = [fields_cmds.get(key).return_var() for key in fields]
+    commands.append(f"return {{{', '.join(return_vars)}}}")
+    return "\n".join(commands)
+
+def exec_command(fields, media_player, debug=False):
 
     script = f"""
-        if application "Music" is running then
-            tell application "Music"
-                {command.value}
+        if application "{media_player}" is running then
+            tell application "{media_player}"
+                {make_script_command(fields, media_player)}
             end tell
         end if
     """
@@ -44,7 +80,6 @@ def exec_command(command, debug=False):
         print(output.stdout)
         print(output.stderr)
     return output.stdout.strip()
-
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -71,5 +106,11 @@ def get_args():
         "-d", "--debug", 
         help="Enable debug mode.", 
         action="store_true"
+    )
+    parser.add_argument(
+        "-m", 
+        "--media-player", 
+        help="The media player to use (default: 'Music').", 
+        default="Music"
     )
     return parser.parse_args()
