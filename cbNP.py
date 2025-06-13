@@ -48,7 +48,7 @@ class Track:
         self.id = id
 
     def __str__(self):
-        return f"{self.name} by {self.artist} from {self.album} ({len(self.artwork)}) - {self.id})"
+        return f"{self.name} by {self.artist} from {self.album} ({len(self.artwork)}) - id: {self.id}"
 
 """ ----------------------------------------------- """
 """ --------------- App Class --------------------- """
