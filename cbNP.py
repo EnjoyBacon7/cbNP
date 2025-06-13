@@ -341,11 +341,10 @@ class cbNPApp(rumps.App):
             track (Track): The track object to send.
         """
         try:
-            self.log_info(f"Sending update to websocket: {track}")
-            track = track.__dict__
+            
             message = {
                 "type": "update",
-                "payload": track,
+                "payload": track.__dict__,
                 "auth": self.args.token
             }
 
@@ -353,7 +352,7 @@ class cbNPApp(rumps.App):
             # TODO: Both for heartbeat and update This is a mess of exceptions
             message = json.dumps(message)
 
-            self.log_info(f"Message size: {sys.getsizeof(message) / 1024} KB")
+            self.log_info(f"Sending update to websocket: {track} - Message size: {sys.getsizeof(message) / 1024} KB")
             await self.websocket_conn.send(message)
 
         except Exception as e:
