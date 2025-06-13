@@ -71,6 +71,8 @@ def exec_command(fields, media_player, debug=False):
 
     output = subprocess.run(ARGS, capture_output=True, text=True)
 
+    if output.stderr:
+        raise RuntimeError(f"Error executing AppleScript: {output.stderr.strip()}")
     if debug:
         print(script)
         print(output.stdout)
