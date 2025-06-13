@@ -2,10 +2,7 @@ from enum import Enum
 import subprocess
 import argparse
 
-SEPARATOR = "++£" # BS separator to enable simple regex splitting applescript result (Meh...)
-
-SEPARATOR = "␟"
-
+SEPARATOR = "␟" # BS separator to enable simple regex splitting applescript result (Meh...)
 class MusicField:
     def __init__(self, key, var, script, append_sep=True):
         self.key = key
