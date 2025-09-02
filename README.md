@@ -8,6 +8,9 @@ A macOS application which retrieves the currently playing track from the Apple M
 
 It lives as a menu bar application and is meant to run in the background. This application uses AppleScript, it is only compatible with macOS.
 
+> [!WARNING]  
+> cbNP does not play well with macOS 26 a.k.a. Tahoe due to the way AppleScript in Apple Music was updated. Spotify support should work the same. Issue discussed [here](https://www.macscripter.net/t/scripting-changes-or-lack-thereof-in-macos-tahoe/77173/11).
+
 ## Installation
 
 ### From release
