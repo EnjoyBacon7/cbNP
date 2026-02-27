@@ -46,6 +46,14 @@ DEFAULT_CONFIG = {
     "media_player": "Music"
 }
 ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify", "MediaRemote"}
+COMMON_MEDIAREMOTE_BUNDLES = {
+    "com.apple.Music",
+    "com.spotify.client",
+    "com.tidal.desktop",
+    "com.deezer.DeezerDesktop",
+    "com.ciderapp.Cider",
+    "com.voxapp.mac",
+}
 
 """ ------------------------------------------------- """
 """ --------------- Track Class --------------------- """
@@ -170,6 +178,11 @@ class cbNPApp(rumps.App):
         except Exception as e:
             self.log_warning(f"MediaRemote init failed: {e}")
             return None
+
+    def _is_allowed_mediaremote_source(self, bundle_identifier, is_music_app):
+        if bundle_identifier in COMMON_MEDIAREMOTE_BUNDLES:
+            return True
+        return False if bundle_identifier else bool(is_music_app)
 
     def _valid_endpoint(self, endpoint):
         if not isinstance(endpoint, str):
@@ -419,6 +432,11 @@ class cbNPApp(rumps.App):
         if track is None or not track.title:
             self.log_warning("MediaRemote returned no active track, falling back to Music AppleScript")
             return self._fetch_track_applescript_fallback()
+
+        if not self._is_allowed_mediaremote_source(track.bundle_identifier, track.is_music_app):
+            raise RuntimeError(
+                f"Ignoring MediaRemote source from non-music app: {track.bundle_identifier or 'unknown'}"
+            )
 
         artwork = self.default_artwork
         if track.artwork_data:

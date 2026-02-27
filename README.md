@@ -62,6 +62,7 @@ Optional arguments:
 - `-m` - Media source: `Music`, `Spotify`, or `MediaRemote`.
 
 `MediaRemote` uses a bundled private-framework adapter for now-playing metadata and artwork retrieval.
+For signal quality, `MediaRemote` updates are filtered to common music app bundle IDs (Apple Music, Spotify, TIDAL, Deezer, Cider, VOX).
 
 ## Credits
 
