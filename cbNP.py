@@ -436,6 +436,7 @@ class cbNPApp(rumps.App):
                 timeout=REQUEST_TIMEOUT,
             )
             name, artist, album, track_id, artwork = data.split(SEPARATOR + ", ", 4)
+            artwork = self._extract_artwork(artwork)
             return name, artist, album, track_id, artwork
         except Exception as e:
             raise RuntimeError(f"MediaRemote fallback failed: {e}") from e

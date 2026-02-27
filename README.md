@@ -61,6 +61,14 @@ Optional arguments:
 - `-d` - Debug mode. Will print additional information to the console.
 - `-m` - Media source: `Music`, `Spotify`, or `MediaRemote`.
 
+`MediaRemote` uses a bundled private-framework adapter for now-playing metadata and artwork retrieval.
+
+## Credits
+
+- MediaRemote integration vendors the original `mediaremote-adapter` project: <https://github.com/ungive/mediaremote-adapter>
+- Original adapter author credit: Jonas van den Berg (copyright (c) 2025), BSD 3-Clause license.
+- Vendored version tracking is documented in `mediaremote_adapter/VENDORING.md`.
+
 ## Configuration and logs
 
 - Preferences are saved to `~/Library/Application Support/cbNP/Pref.json`.

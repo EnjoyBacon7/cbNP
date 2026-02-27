@@ -1,36 +1,14 @@
-import ctypes
-import threading
+import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass
-from typing import Any
-
-import objc
 
 
-MEDIA_REMOTE_FRAMEWORK = "/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote"
-LIBDISPATCH = "/usr/lib/system/libdispatch.dylib"
-LIBSYSTEM = "/usr/lib/libSystem.B.dylib"
-
-BLOCK_HAS_SIGNATURE = 1 << 30
-
-
-class _BlockDescriptor(ctypes.Structure):
-    _fields_ = [
-        ("reserved", ctypes.c_ulong),
-        ("size", ctypes.c_ulong),
-        ("copy_helper", ctypes.c_void_p),
-        ("dispose_helper", ctypes.c_void_p),
-        ("signature", ctypes.c_char_p),
-    ]
-
-
-class _BlockLiteral(ctypes.Structure):
-    _fields_ = [
-        ("isa", ctypes.c_void_p),
-        ("flags", ctypes.c_int),
-        ("reserved", ctypes.c_int),
-        ("invoke", ctypes.c_void_p),
-        ("descriptor", ctypes.POINTER(_BlockDescriptor)),
-    ]
+ADAPTER_DIRNAME = "mediaremote_adapter"
+ADAPTER_SCRIPT = "mediaremote-adapter.pl"
+ADAPTER_FRAMEWORK = "MediaRemoteAdapter.framework"
+ADAPTER_TEST_CLIENT = "MediaRemoteAdapterTestClient"
 
 
 @dataclass
@@ -44,32 +22,40 @@ class NowPlayingTrack:
 
 class MediaRemoteClient:
     def __init__(self):
-        self._mr = ctypes.CDLL(MEDIA_REMOTE_FRAMEWORK)
-        self._dispatch = ctypes.CDLL(LIBDISPATCH)
-        libsystem = ctypes.CDLL(LIBSYSTEM)
+        adapter_root = self._resolve_adapter_root()
+        self._script_path = os.path.join(adapter_root, ADAPTER_SCRIPT)
+        self._framework_path = os.path.join(adapter_root, ADAPTER_FRAMEWORK)
+        self._test_client_path = os.path.join(adapter_root, ADAPTER_TEST_CLIENT)
 
-        self._dispatch.dispatch_get_global_queue.argtypes = [ctypes.c_long, ctypes.c_ulong]
-        self._dispatch.dispatch_get_global_queue.restype = ctypes.c_void_p
-        self._mr.MRMediaRemoteGetNowPlayingInfo.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    def _resolve_adapter_root(self):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            return os.path.join(meipass, ADAPTER_DIRNAME)
+        return os.path.join(os.path.dirname(__file__), ADAPTER_DIRNAME)
 
-        self._ns_concrete_stack_block = ctypes.c_void_p.in_dll(libsystem, "_NSConcreteStackBlock")
+    def _ensure_adapter_files(self):
+        missing = []
+        for path in [self._script_path, self._framework_path, self._test_client_path]:
+            if not os.path.exists(path):
+                missing.append(path)
+        if missing:
+            raise FileNotFoundError(f"Missing MediaRemote adapter assets: {', '.join(missing)}")
 
     def _dict_to_track(self, payload):
-        title = str(payload.get("title") or payload.get("kMRMediaRemoteNowPlayingInfoTitle") or "")
-        artist = str(payload.get("artist") or payload.get("kMRMediaRemoteNowPlayingInfoArtist") or "")
-        album = str(payload.get("album") or payload.get("kMRMediaRemoteNowPlayingInfoAlbum") or "")
-
-        raw_identifier = payload.get("uniqueIdentifier")
-        if raw_identifier is None:
-            raw_identifier = payload.get("kMRMediaRemoteNowPlayingInfoUniqueIdentifier")
-        identifier = str(raw_identifier or "")
+        title = str(payload.get("title") or "")
+        artist = str(payload.get("artist") or "")
+        album = str(payload.get("album") or "")
+        identifier = str(payload.get("uniqueIdentifier") or "")
 
         artwork_data = payload.get("artworkData")
-        if artwork_data is None:
-            artwork_data = payload.get("kMRMediaRemoteNowPlayingInfoArtworkData")
-
-        if artwork_data is not None:
-            artwork_data = bytes(artwork_data)
+        if isinstance(artwork_data, str):
+            try:
+                import base64
+                artwork_data = base64.b64decode(artwork_data, validate=False)
+            except Exception:
+                artwork_data = None
+        else:
+            artwork_data = None
 
         return NowPlayingTrack(
             title=title,
@@ -80,57 +66,51 @@ class MediaRemoteClient:
         )
 
     def get_now_playing(self, timeout=1.0):
-        callback_done = threading.Event()
-        callback_result: dict[str, Any] = {"payload": None, "error": None}
+        self._ensure_adapter_files()
 
-        @_NOW_PLAYING_CALLBACK
-        def _callback(_block, payload_ptr):
-            try:
-                if payload_ptr:
-                    payload = objc.objc_object(c_void_p=payload_ptr)  # type: ignore[attr-defined]
-                    callback_result["payload"] = dict(payload)
-            except Exception as exc:
-                callback_result["error"] = exc
-            finally:
-                callback_done.set()
+        cmd = [
+            "perl",
+            self._script_path,
+            self._framework_path,
+            self._test_client_path,
+            "get",
+        ]
 
-        descriptor = _BlockDescriptor()
-        descriptor.reserved = 0
-        descriptor.size = ctypes.sizeof(_BlockLiteral)
-        descriptor.copy_helper = 0
-        descriptor.dispose_helper = 0
-        descriptor.signature = b"v@?@"
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=True,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(f"Timed out waiting for MediaRemote after {timeout}s") from exc
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(exc.stderr.strip() or "MediaRemote adapter failed") from exc
 
-        block = _BlockLiteral()
-        block.isa = self._ns_concrete_stack_block
-        block.flags = BLOCK_HAS_SIGNATURE
-        block.reserved = 0
-        block.invoke = ctypes.cast(_callback, ctypes.c_void_p).value
-        block.descriptor = ctypes.pointer(descriptor)
-
-        queue = self._dispatch.dispatch_get_global_queue(0, 0)
-        self._mr.MRMediaRemoteGetNowPlayingInfo(queue, ctypes.byref(block))
-
-        if not callback_done.wait(timeout):
-            raise TimeoutError(f"Timed out waiting for MediaRemote after {timeout}s")
-
-        if callback_result["error"] is not None:
-            raise RuntimeError("MediaRemote callback failed") from callback_result["error"]
-
-        payload = callback_result["payload"]
-        if not payload:
+        out = proc.stdout.strip()
+        if not out:
             return None
 
+        payload = json.loads(out)
+        if not payload:
+            return None
         return self._dict_to_track(payload)
-
-
-_NOW_PLAYING_CALLBACK = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)
 
 
 if __name__ == "__main__":
     client = MediaRemoteClient()
-    track = client.get_now_playing(timeout=1.5)
+    track = client.get_now_playing(timeout=2)
     if track is None:
         print("No active now playing data")
     else:
-        print(track)
+        print(
+            {
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album,
+                "identifier": track.identifier,
+                "artwork_bytes": len(track.artwork_data) if track.artwork_data else 0,
+            }
+        )
