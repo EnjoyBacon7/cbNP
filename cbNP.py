@@ -10,8 +10,14 @@ import sys
 import datetime
 import requests
 from urllib.parse import urlparse
+from typing import Any
 
 from helper import APP_VERSION, exec_command, get_args, SEPARATOR
+
+try:
+    from mediaremote import MediaRemoteClient
+except Exception:
+    MediaRemoteClient = None
 
 HEARTBEAT = 45
 REQUEST_TIMEOUT = 5
@@ -39,7 +45,7 @@ DEFAULT_CONFIG = {
     "interval": 15,
     "media_player": "Music"
 }
-ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify"}
+ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify", "MediaRemote"}
 
 """ ------------------------------------------------- """
 """ --------------- Track Class --------------------- """
@@ -132,6 +138,11 @@ class cbNPApp(rumps.App):
         self.args.token = config["token"]
         self.args.interval = config["interval"]
         self.args.media_player = config["media_player"]
+        self.default_artwork = self._load_default_artwork()
+        self.mediaremote_client = None
+
+        if self.args.media_player == "MediaRemote":
+            self.mediaremote_client = self._build_mediaremote_client()
 
         self.websocket_conn = None
 
@@ -140,6 +151,25 @@ class cbNPApp(rumps.App):
 
         self.connection_timer = rumps.Timer(self.connect, 2)
         self.connection_timer.start()
+
+    def _load_default_artwork(self):
+        try:
+            with open(ICON_PATH, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            self.log_warning(f"Could not load default artwork logo: {e}")
+            return ""
+
+    def _build_mediaremote_client(self):
+        if MediaRemoteClient is None:
+            self.log_warning("MediaRemote mode unavailable; module import failed")
+            return None
+
+        try:
+            return MediaRemoteClient()
+        except Exception as e:
+            self.log_warning(f"MediaRemote init failed: {e}")
+            return None
 
     def _valid_endpoint(self, endpoint):
         if not isinstance(endpoint, str):
@@ -229,22 +259,25 @@ class cbNPApp(rumps.App):
 
     def _extract_artwork(self, artwork):
         if not artwork or artwork == "missing value":
-            return ""
+            return self.default_artwork
 
-        if artwork.startswith("http"):
-            response = requests.get(artwork, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            return base64.b64encode(response.content).decode("utf-8")
+        try:
+            if artwork.startswith("http"):
+                response = requests.get(artwork, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                return base64.b64encode(response.content).decode("utf-8")
 
-        raw_data = artwork.replace("«data ", "").replace("»", "")
-        raw_data = re.sub(r"[^0-9A-Fa-f]", "", raw_data)
-        if len(raw_data) % 2 != 0:
-            raw_data = raw_data[:-1]
+            raw_data = artwork.replace("«data ", "").replace("»", "")
+            raw_data = re.sub(r"[^0-9A-Fa-f]", "", raw_data)
+            if len(raw_data) % 2 != 0:
+                raw_data = raw_data[:-1]
 
-        if not raw_data:
-            return ""
+            if not raw_data:
+                return self.default_artwork
 
-        return base64.b64encode(bytes.fromhex(raw_data)).decode("utf-8")
+            return base64.b64encode(bytes.fromhex(raw_data)).decode("utf-8")
+        except Exception:
+            return self.default_artwork
 
     def open_preferences(self, _):
         """
@@ -283,6 +316,11 @@ class cbNPApp(rumps.App):
                 return
 
             self.log_info("New saved preferences: " + str(self._redact_config(data)))
+
+            if self.args.media_player == "MediaRemote":
+                self.mediaremote_client = self._build_mediaremote_client()
+            else:
+                self.mediaremote_client = None
         
         self.log_info("Preferences window closed.")
         
@@ -302,21 +340,12 @@ class cbNPApp(rumps.App):
             return
 
         try:
-            data = exec_command(
-                ["track", "artist", "album", "id", "artwork"],
-                self.args.media_player,
-                self.args.debug,
-                timeout=REQUEST_TIMEOUT,
-            )
+            if self.args.media_player == "MediaRemote":
+                name, artist, album, id, artwork = self._fetch_track_mediaremote()
+            else:
+                name, artist, album, id, artwork = self._fetch_track_applescript()
         except RuntimeError as e:
             self.log_error(f"Error getting track data: {e}", display=False)
-            self.menu["track"].title = "No track playing"
-            return
-
-        try:
-            name, artist, album, id, artwork = data.split(SEPARATOR + ", ", 4)
-        except ValueError as e:
-            self.log_error(f"Error parsing track data. Is {self.args.media_player} running? Error: {e}")
             self.menu["track"].title = "No track playing"
             return
 
@@ -324,7 +353,8 @@ class cbNPApp(rumps.App):
         global current_track
         if current_track is None or current_track.id != id:
             try:
-                artwork = self._extract_artwork(artwork)
+                if self.args.media_player != "MediaRemote":
+                    artwork = self._extract_artwork(artwork)
             except Exception as e:
                 self.log_error(f"Error parsing or encoding artwork data: {e}", display=False)
                 artwork = ""
@@ -341,6 +371,61 @@ class cbNPApp(rumps.App):
         except Exception as e:
             self._handle_connection_loss("Error sending update to websocket", e)
 
+    def _fetch_track_applescript(self):
+        try:
+            data = exec_command(
+                ["track", "artist", "album", "id", "artwork"],
+                self.args.media_player,
+                self.args.debug,
+                timeout=REQUEST_TIMEOUT,
+            )
+        except RuntimeError as e:
+            raise RuntimeError(str(e)) from e
+
+        try:
+            name, artist, album, id, artwork = data.split(SEPARATOR + ", ", 4)
+        except ValueError as e:
+            raise RuntimeError(f"Error parsing track data for {self.args.media_player}: {e}") from e
+
+        return name, artist, album, id, artwork
+
+    def _fetch_track_mediaremote(self):
+        if self.mediaremote_client is None:
+            self.mediaremote_client = self._build_mediaremote_client()
+
+        if self.mediaremote_client is None:
+            raise RuntimeError("MediaRemote client is unavailable")
+
+        client = self.mediaremote_client
+
+        result: dict[str, Any] = {"track": None, "error": None}
+
+        def _runner():
+            try:
+                result["track"] = client.get_now_playing(timeout=REQUEST_TIMEOUT)
+            except Exception as e:
+                result["error"] = e
+
+        worker = threading.Thread(target=_runner, daemon=True)
+        worker.start()
+        worker.join(REQUEST_TIMEOUT)
+
+        if worker.is_alive():
+            raise RuntimeError("MediaRemote request timed out")
+        if result["error"] is not None:
+            raise RuntimeError(f"MediaRemote error: {result['error']}")
+
+        track = result["track"]
+        if track is None or not track.title:
+            raise RuntimeError("No active track returned by MediaRemote")
+
+        artwork = self.default_artwork
+        if track.artwork_data:
+            artwork = base64.b64encode(track.artwork_data).decode("utf-8")
+
+        track_id = track.identifier or f"{track.title}:{track.artist}:{track.album}"
+        return track.title, track.artist, track.album, track_id, artwork
+
     def heartbeat(self, _):
         if self.websocket_conn is None:
             self.log_warning("Websocket connection is not open. Trying to connect...")
@@ -353,14 +438,18 @@ class cbNPApp(rumps.App):
             self._handle_connection_loss("Error sending heartbeat to websocket", e)
 
     def exit_application(self, _):
+        self.interval_timer.stop()
+        self.heartbeat_timer.stop()
+        self.connection_timer.stop()
+
         try:
-            future = asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
-            future.result(timeout=REQUEST_TIMEOUT)
+            if self.loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.close_conn(), self.loop)
+                self.loop.call_soon_threadsafe(self.loop.stop)
         except Exception as e:
             self.log_error(f"Error shutting down cleanly: {e}", display=False)
-        finally:
-            self.loop.call_soon_threadsafe(self.loop.stop)
-            rumps.quit_application()
+
+        rumps.quit_application()
 
     """ ----------------------------------------------------- """
     """ -------------- Websocket methods -------------------- """
@@ -451,11 +540,6 @@ class cbNPApp(rumps.App):
                 await self.websocket_conn.close()
         except Exception as e:
             self.log_error(f"Error closing websocket: {e}")
-
-    async def close_conn_quit(self):
-        self.interval_timer.stop()
-        self.heartbeat_timer.stop()
-        await self.close_conn()
 
     """ ----------------------------------------------------- """
     """ --------------- Logging methods --------------------- """

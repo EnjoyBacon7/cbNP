@@ -59,6 +59,7 @@ Optional arguments:
 - `-t` - The token to authenticate with the endpoint.
 - `-i` - The interval in seconds between updates. Default is 15 seconds.
 - `-d` - Debug mode. Will print additional information to the console.
+- `-m` - Media source: `Music`, `Spotify`, or `MediaRemote`.
 
 ## Configuration and logs
 
