@@ -13,7 +13,7 @@ a = Analysis(
     ['cbNP.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets/logo.png', './')],
+    datas=[('assets/logo.png', './'), ('mediaremote_adapter', 'mediaremote_adapter')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
