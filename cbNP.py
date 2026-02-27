@@ -9,22 +9,37 @@ import rumps
 import sys
 import datetime
 import requests
+from urllib.parse import urlparse
 
-from helper import exec_command, get_args, SEPARATOR
+from helper import APP_VERSION, exec_command, get_args, SEPARATOR
 
 HEARTBEAT = 45
+REQUEST_TIMEOUT = 5
+APP_NAME = "cbNP"
+APP_SUPPORT_DIR = os.path.join(os.path.expanduser("~"), "Library", "Application Support", APP_NAME)
 
 current_track = None
 
-# If running as app bundle, use the bundled paths. Else use local one.
-if not hasattr(sys, '_MEIPASS'):
-    PREF_PATH = "./Pref.json"
+# Runtime files should always be placed in a user-writable location.
+os.makedirs(APP_SUPPORT_DIR, exist_ok=True)
+PREF_PATH = os.path.join(APP_SUPPORT_DIR, "Pref.json")
+LOG_PATH = os.path.join(APP_SUPPORT_DIR, "error.log")
+
+# If running as app bundle, use bundled icon path. Else use local one.
+MEIPASS = getattr(sys, "_MEIPASS", None)
+if MEIPASS is None:
     ICON_PATH = "assets/logo.png"
-    LOG_PATH = "./error.log"
 else:
-    PREF_PATH = sys._MEIPASS + "/Pref.json"
-    ICON_PATH = sys._MEIPASS + "/logo.png"
-    LOG_PATH = sys._MEIPASS + "/error.log"
+    ICON_PATH = os.path.join(MEIPASS, "logo.png")
+
+
+DEFAULT_CONFIG = {
+    "endpoint": "ws://localhost:8000",
+    "token": "",
+    "interval": 15,
+    "media_player": "Music"
+}
+ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify"}
 
 """ ------------------------------------------------- """
 """ --------------- Track Class --------------------- """
@@ -93,7 +108,7 @@ class cbNPApp(rumps.App):
 
         self.log_info("Starting cbNP")
 
-        super(cbNPApp, self).__init__("cbNP", icon=ICON_PATH, quit_button=None)
+        super(cbNPApp, self).__init__(APP_NAME, icon=ICON_PATH, quit_button=None)  # type: ignore[arg-type]
 
         self.args = get_args()
 
@@ -106,30 +121,17 @@ class cbNPApp(rumps.App):
             rumps.MenuItem('Update manually', callback=self.update_manually),
             None,
             rumps.MenuItem('Preferences', callback=self.open_preferences),
-            "v2.1.0",
+            f"v{APP_VERSION}",
             rumps.MenuItem('Quit', callback=self.exit_application)
         ]
 
-        # Creating a default preferences file if it doesn't exist
-        if not os.path.exists(PREF_PATH):
-            with open(PREF_PATH, "w") as f:
-                f.write(
-                    json.dumps(
-                        {
-                            "endpoint": self.args.endpoint,
-                            "token": self.args.token,
-                            "interval": self.args.interval,
-                            "media_player": self.args.media_player
-                        }, indent=4
-                    )
-                )
-        else:
-            with open(PREF_PATH, "r") as f:
-                data = json.loads(f.read())
-                self.args.endpoint = data["endpoint"]
-                self.args.token = data["token"]
-                self.args.interval = data["interval"]
-                self.args.media_player = data["media_player"]
+        config = self.load_preferences()
+        config = self.override_config_with_args(config)
+
+        self.args.endpoint = config["endpoint"]
+        self.args.token = config["token"]
+        self.args.interval = config["interval"]
+        self.args.media_player = config["media_player"]
 
         self.websocket_conn = None
 
@@ -138,6 +140,111 @@ class cbNPApp(rumps.App):
 
         self.connection_timer = rumps.Timer(self.connect, 2)
         self.connection_timer.start()
+
+    def _valid_endpoint(self, endpoint):
+        if not isinstance(endpoint, str):
+            return False
+        parsed = urlparse(endpoint)
+        return parsed.scheme in {"ws", "wss"} and bool(parsed.netloc)
+
+    def _valid_interval(self, interval):
+        return isinstance(interval, int) and interval >= 1
+
+    def _valid_media_player(self, media_player):
+        return media_player in ALLOWED_MEDIA_PLAYERS
+
+    def _validate_config(self, data):
+        config = dict(DEFAULT_CONFIG)
+
+        endpoint = data.get("endpoint", config["endpoint"])
+        if self._valid_endpoint(endpoint):
+            config["endpoint"] = endpoint
+
+        token = data.get("token", config["token"])
+        if isinstance(token, str):
+            config["token"] = token
+
+        interval = data.get("interval", config["interval"])
+        if isinstance(interval, bool):
+            interval = config["interval"]
+        if self._valid_interval(interval):
+            config["interval"] = interval
+
+        media_player = data.get("media_player", config["media_player"])
+        if self._valid_media_player(media_player):
+            config["media_player"] = media_player
+
+        return config
+
+    def _redact_config(self, config):
+        sanitized = dict(config)
+        token = sanitized.get("token", "")
+        if token:
+            sanitized["token"] = f"{token[:4]}..."
+        return sanitized
+
+    def save_preferences(self, config):
+        with open(PREF_PATH, "w") as f:
+            json.dump(config, f, indent=4)
+
+    def load_preferences(self):
+        if not os.path.exists(PREF_PATH):
+            self.save_preferences(DEFAULT_CONFIG)
+            return dict(DEFAULT_CONFIG)
+
+        try:
+            with open(PREF_PATH, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            self.log_warning(f"Invalid preferences file, restoring defaults: {e}")
+            self.save_preferences(DEFAULT_CONFIG)
+            return dict(DEFAULT_CONFIG)
+
+        validated = self._validate_config(data)
+        if validated != data:
+            self.save_preferences(validated)
+        return validated
+
+    def override_config_with_args(self, config):
+        overridden = dict(config)
+
+        if self.args.endpoint and self._valid_endpoint(self.args.endpoint):
+            overridden["endpoint"] = self.args.endpoint
+        if self.args.token is not None:
+            overridden["token"] = self.args.token
+        if self.args.interval is not None and self._valid_interval(self.args.interval):
+            overridden["interval"] = self.args.interval
+        if self.args.media_player and self._valid_media_player(self.args.media_player):
+            overridden["media_player"] = self.args.media_player
+
+        self.save_preferences(overridden)
+        return overridden
+
+    def _handle_connection_loss(self, context, error):
+        self.websocket_conn = None
+        self.interval_timer.stop()
+        self.heartbeat_timer.stop()
+        self.connection_timer.start()
+        self.log_warning(f"{context}: {error}")
+
+    def _extract_artwork(self, artwork):
+        if not artwork or artwork == "missing value":
+            return ""
+
+        if artwork.startswith("http"):
+            response = requests.get(artwork, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            return base64.b64encode(response.content).decode("utf-8")
+
+        raw_data = artwork.replace("«data ", "").replace("»", "")
+        raw_data = re.sub(r"[^0-9A-Fa-f]", "", raw_data)
+        if len(raw_data) % 2 != 0:
+            raw_data = raw_data[:-1]
+
+        if not raw_data:
+            return ""
+
+        return base64.b64encode(bytes.fromhex(raw_data)).decode("utf-8")
 
     def open_preferences(self, _):
         """
@@ -162,21 +269,20 @@ class cbNPApp(rumps.App):
         if response.clicked:
 
             try:
-                data = json.loads(response.text)
+                data = self._validate_config(json.loads(response.text))
                 self.args.endpoint = data["endpoint"]
                 self.args.token = data["token"]
                 self.args.interval = data["interval"]
                 self.args.media_player = data["media_player"]
-                
+
                 self.interval_timer.interval = self.args.interval
 
-                with open(PREF_PATH, "w") as f:
-                    f.write(json.dumps(data, indent=4))
+                self.save_preferences(data)
             except Exception as e:
                 self.log_error(f"Error saving preferences: {e}")
                 return
-            
-            self.log_info("New saved preferences: " + str(data))
+
+            self.log_info("New saved preferences: " + str(self._redact_config(data)))
         
         self.log_info("Preferences window closed.")
         
@@ -191,46 +297,37 @@ class cbNPApp(rumps.App):
         Updates the track and sends it to the server.
         """
 
-        # Arbitrary check TODO
         if self.websocket_conn is None:
             self.log_warning("Websocket connection is not open. Trying to connect...")
             return
 
-        # TODO: Since artwork may be raw data, a separator cannot be added at the end. This means it MUST be the last field.
-        data = exec_command(["track", "artist", "album", "id", "artwork"], self.args.media_player, self.args.debug)
-        name = artist = album = artwork = id = ""
+        try:
+            data = exec_command(
+                ["track", "artist", "album", "id", "artwork"],
+                self.args.media_player,
+                self.args.debug,
+                timeout=REQUEST_TIMEOUT,
+            )
+        except RuntimeError as e:
+            self.log_error(f"Error getting track data: {e}", display=False)
+            self.menu["track"].title = "No track playing"
+            return
 
         try:
-            name, artist, album, id, artwork = data.split(SEPARATOR + ", ")
+            name, artist, album, id, artwork = data.split(SEPARATOR + ", ", 4)
         except ValueError as e:
             self.log_error(f"Error parsing track data. Is {self.args.media_player} running? Error: {e}")
             self.menu["track"].title = "No track playing"
             return
-        
+
         # Check if the track id is the same as the current track id
         global current_track
-        if current_track == None or current_track.id != id:
-            # TODO: Consolidate artwork handling. Spotify returns a URL, Music returns raw data.
-            if artwork == "missing value":
-                artwork = ''
-            elif artwork.startswith("http"):
-                try:
-                    artwork = requests.get(artwork).content
-                    artwork = bytes(artwork)
-                    artwork = base64.b64encode(artwork).decode("utf-8")
-                except Exception as e:
-                    self.log_error(f"Error fetching or encoding artwork: {e}")
-                    artwork = ''
-            else:
-                try:
-                    # Getting rid of all applescript bs formatting (and converting to binary)
-                    raw_data = artwork[10:]
-                    raw_data = re.sub(r"[^a-zA-Z0-9+/=]", "", raw_data)
-                    artwork = bytes.fromhex(raw_data)
-                    artwork = base64.b64encode(artwork).decode("utf-8")
-                except ValueError as e:
-                    self.log_error(f"Error parsing or encoding artwork data: {e}")
-
+        if current_track is None or current_track.id != id:
+            try:
+                artwork = self._extract_artwork(artwork)
+            except Exception as e:
+                self.log_error(f"Error parsing or encoding artwork data: {e}", display=False)
+                artwork = ""
             current_track = Track(name, artist, album, artwork, id)
             self.menu["track"].title = f"{name} by {artist}"
 
@@ -240,15 +337,9 @@ class cbNPApp(rumps.App):
         )
 
         try:
-            result = future.result()
-        except TypeError as e:
-            self.log_error(f"Error encoding artwork: {e}")
-        except websockets.exceptions.ConnectionClosed as e:
-            self.websocket_conn = None
-            self.connection_timer.start()
-            self.interval_timer.stop()
-            self.heartbeat_timer.stop()
-            self.log_error(f"Error sending update to websocket: {e}")
+            future.result(timeout=REQUEST_TIMEOUT)
+        except Exception as e:
+            self._handle_connection_loss("Error sending update to websocket", e)
 
     def heartbeat(self, _):
         if self.websocket_conn is None:
@@ -257,18 +348,19 @@ class cbNPApp(rumps.App):
 
         future = asyncio.run_coroutine_threadsafe(self.push_heartbeat(), self.loop)
         try:
-            result = future.result()
-        except TypeError as e:
-            self.log_error(f"Error encoding artwork: {e}")
-        except websockets.exceptions.ConnectionClosed as e:
-            self.websocket_conn = None
-            self.connection_timer.start()
-            self.interval_timer.stop()
-            self.heartbeat_timer.stop()
-            self.log_error(f"Error sending heartbeat to websocket: {e}")
+            future.result(timeout=REQUEST_TIMEOUT)
+        except Exception as e:
+            self._handle_connection_loss("Error sending heartbeat to websocket", e)
 
-    def exit_application(self, _): # This fails but I can't be bothered to fix it (TODO)
-        asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
+    def exit_application(self, _):
+        try:
+            future = asyncio.run_coroutine_threadsafe(self.close_conn_quit(), self.loop)
+            future.result(timeout=REQUEST_TIMEOUT)
+        except Exception as e:
+            self.log_error(f"Error shutting down cleanly: {e}", display=False)
+        finally:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            rumps.quit_application()
 
     """ ----------------------------------------------------- """
     """ -------------- Websocket methods -------------------- """
@@ -285,9 +377,10 @@ class cbNPApp(rumps.App):
 
         future = asyncio.run_coroutine_threadsafe(self.open_conn(None), self.loop)
         try:
-            future.result()
+            future.result(timeout=REQUEST_TIMEOUT)
         except Exception as e:
             self.log_error(f"Error opening websocket connection: {e}. Retrying...")
+            self.connection_timer.start()
             return
 
         try:
@@ -298,11 +391,7 @@ class cbNPApp(rumps.App):
             self.connection_timer.stop()
             self.log_info("Timers started.")
         except Exception as e:
-            self.log_error(f"Error starting timers: {e}. Retrying...")
-            self.connection_timer.start()
-            self.interval_timer.stop()
-            self.heartbeat_timer.stop()
-            self.websocket_conn = None
+            self._handle_connection_loss("Error starting timers", e)
             return
 
     async def push_heartbeat(self):
@@ -316,22 +405,20 @@ class cbNPApp(rumps.App):
 
         self.log_info(f"Sending heartbeat to websocket")
 
-        try:
-            if self.websocket_conn is None:
-                raise websockets.exceptions.ConnectionClosed
-            await self.websocket_conn.send(message)
-            
-        except Exception as e:
-            raise e
+        if self.websocket_conn is None:
+            raise ConnectionError("Websocket connection is not open")
+        await self.websocket_conn.send(message)
 
     async def open_conn(self, _):
         """
         Opens a websocket connection to the server and starts the interval timers.
         """        
-        try:
-            self.websocket_conn = await websockets.connect(f"{self.args.endpoint}", max_size=None)
-        except Exception as e:
-            raise e
+        self.websocket_conn = await websockets.connect(
+            f"{self.args.endpoint}",
+            max_size=None,
+            open_timeout=REQUEST_TIMEOUT,
+            ping_interval=None,
+        )
         
     async def push_update(self, track):
         """
@@ -340,23 +427,19 @@ class cbNPApp(rumps.App):
         Args:
             track (Track): The track object to send.
         """
-        try:
-            
-            message = {
-                "type": "update",
-                "payload": track.__dict__,
-                "auth": self.args.token
-            }
+        if self.websocket_conn is None:
+            raise ConnectionError("Websocket connection is not open")
 
+        message = {
+            "type": "update",
+            "payload": track.__dict__,
+            "auth": self.args.token
+        }
 
-            # TODO: Both for heartbeat and update This is a mess of exceptions
-            message = json.dumps(message)
+        message = json.dumps(message)
 
-            self.log_info(f"Sending update to websocket: {track} - Message size: {sys.getsizeof(message) / 1024} KB")
-            await self.websocket_conn.send(message)
-
-        except Exception as e:
-            raise e
+        self.log_info(f"Sending update to websocket: {track} - Message size: {sys.getsizeof(message) / 1024} KB")
+        await self.websocket_conn.send(message)
 
     async def close_conn(self):
         """
@@ -364,7 +447,8 @@ class cbNPApp(rumps.App):
         """
         try:
             self.log_info("Closing websocket connection.")
-            await self.websocket_conn.close()
+            if self.websocket_conn is not None:
+                await self.websocket_conn.close()
         except Exception as e:
             self.log_error(f"Error closing websocket: {e}")
 
@@ -372,7 +456,6 @@ class cbNPApp(rumps.App):
         self.interval_timer.stop()
         self.heartbeat_timer.stop()
         await self.close_conn()
-        rumps.quit_application()
 
     """ ----------------------------------------------------- """
     """ --------------- Logging methods --------------------- """
