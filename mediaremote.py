@@ -55,11 +55,18 @@ class MediaRemoteClient:
         self._ns_concrete_stack_block = ctypes.c_void_p.in_dll(libsystem, "_NSConcreteStackBlock")
 
     def _dict_to_track(self, payload):
-        title = str(payload.get("kMRMediaRemoteNowPlayingInfoTitle", ""))
-        artist = str(payload.get("kMRMediaRemoteNowPlayingInfoArtist", ""))
-        album = str(payload.get("kMRMediaRemoteNowPlayingInfoAlbum", ""))
-        identifier = str(payload.get("kMRMediaRemoteNowPlayingInfoUniqueIdentifier", ""))
-        artwork_data = payload.get("kMRMediaRemoteNowPlayingInfoArtworkData")
+        title = str(payload.get("title") or payload.get("kMRMediaRemoteNowPlayingInfoTitle") or "")
+        artist = str(payload.get("artist") or payload.get("kMRMediaRemoteNowPlayingInfoArtist") or "")
+        album = str(payload.get("album") or payload.get("kMRMediaRemoteNowPlayingInfoAlbum") or "")
+
+        raw_identifier = payload.get("uniqueIdentifier")
+        if raw_identifier is None:
+            raw_identifier = payload.get("kMRMediaRemoteNowPlayingInfoUniqueIdentifier")
+        identifier = str(raw_identifier or "")
+
+        artwork_data = payload.get("artworkData")
+        if artwork_data is None:
+            artwork_data = payload.get("kMRMediaRemoteNowPlayingInfoArtworkData")
 
         if artwork_data is not None:
             artwork_data = bytes(artwork_data)

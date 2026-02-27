@@ -410,14 +410,15 @@ class cbNPApp(rumps.App):
         worker.start()
         worker.join(REQUEST_TIMEOUT)
 
-        if worker.is_alive():
-            raise RuntimeError("MediaRemote request timed out")
-        if result["error"] is not None:
-            raise RuntimeError(f"MediaRemote error: {result['error']}")
+        if worker.is_alive() or result["error"] is not None:
+            error = result["error"] if result["error"] is not None else "request timed out"
+            self.log_warning(f"MediaRemote fetch failed, falling back to Music AppleScript: {error}")
+            return self._fetch_track_applescript_fallback()
 
         track = result["track"]
         if track is None or not track.title:
-            raise RuntimeError("No active track returned by MediaRemote")
+            self.log_warning("MediaRemote returned no active track, falling back to Music AppleScript")
+            return self._fetch_track_applescript_fallback()
 
         artwork = self.default_artwork
         if track.artwork_data:
@@ -425,6 +426,19 @@ class cbNPApp(rumps.App):
 
         track_id = track.identifier or f"{track.title}:{track.artist}:{track.album}"
         return track.title, track.artist, track.album, track_id, artwork
+
+    def _fetch_track_applescript_fallback(self):
+        try:
+            data = exec_command(
+                ["track", "artist", "album", "id", "artwork"],
+                "Music",
+                self.args.debug,
+                timeout=REQUEST_TIMEOUT,
+            )
+            name, artist, album, track_id, artwork = data.split(SEPARATOR + ", ", 4)
+            return name, artist, album, track_id, artwork
+        except Exception as e:
+            raise RuntimeError(f"MediaRemote fallback failed: {e}") from e
 
     def heartbeat(self, _):
         if self.websocket_conn is None:

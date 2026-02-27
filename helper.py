@@ -48,7 +48,7 @@ MUSIC_FIELDS = {
     "artist": MusicField("artist", "trackArtist", "artist of current track"),
     "album": MusicField("album", "trackAlbum", "album of current track"),
     "id": MusicField("id", "trackId", "id of current track as string"),
-    "artwork": MusicField("artwork", "artworkData", "get raw data of artwork 1 of current track", append_sep=False),
+    "artwork": MusicField("artwork", "artworkData", "data of artwork 1 of current track", append_sep=False),
 }
 SPOTIFY_FIELDS = {
     "track": MusicField("track", "trackName", "name of current track"),
