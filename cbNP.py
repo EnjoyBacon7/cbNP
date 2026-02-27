@@ -9,6 +9,7 @@ import rumps
 import sys
 import datetime
 import requests
+import platform
 from urllib.parse import urlparse
 from typing import Any
 
@@ -46,6 +47,7 @@ DEFAULT_CONFIG = {
     "media_player": "Music"
 }
 ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify", "MediaRemote"}
+MUSIC_TAHOE_WARNING_KEY = "source-warning"
 COMMON_MEDIAREMOTE_BUNDLES = {
     "com.apple.Music",
     "com.spotify.client",
@@ -148,9 +150,12 @@ class cbNPApp(rumps.App):
         self.args.media_player = config["media_player"]
         self.default_artwork = self._load_default_artwork()
         self.mediaremote_client = None
+        self.is_tahoe = self._is_tahoe()
 
         if self.args.media_player == "MediaRemote":
             self.mediaremote_client = self._build_mediaremote_client()
+
+        self._refresh_source_warning_menu()
 
         self.websocket_conn = None
 
@@ -178,6 +183,24 @@ class cbNPApp(rumps.App):
         except Exception as e:
             self.log_warning(f"MediaRemote init failed: {e}")
             return None
+
+    def _is_tahoe(self):
+        version = platform.mac_ver()[0]
+        if not version:
+            return False
+        try:
+            major = int(version.split(".")[0])
+            return major >= 26
+        except (ValueError, IndexError):
+            return False
+
+    def _refresh_source_warning_menu(self):
+        if self.args.media_player == "Music" and self.is_tahoe:
+            warning_item = rumps.MenuItem(MUSIC_TAHOE_WARNING_KEY)
+            warning_item.title = "Warning: Music artwork unavailable on Tahoe; use MediaRemote"
+            self.menu[MUSIC_TAHOE_WARNING_KEY] = warning_item
+        else:
+            self.menu.pop(MUSIC_TAHOE_WARNING_KEY, None)
 
     def _is_allowed_mediaremote_source(self, bundle_identifier, is_music_app):
         if bundle_identifier in COMMON_MEDIAREMOTE_BUNDLES:
@@ -334,6 +357,7 @@ class cbNPApp(rumps.App):
                 self.mediaremote_client = self._build_mediaremote_client()
             else:
                 self.mediaremote_client = None
+            self._refresh_source_warning_menu()
         
         self.log_info("Preferences window closed.")
         
