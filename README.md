@@ -1,15 +1,15 @@
 # cbNP
 
-A macOS application which retrieves the currently playing track from the Apple Music application through AppleScript and posts it to the provided webhook endpoint. Available as a native macOS app.
+A macOS menu bar app that retrieves now-playing data and posts it to a websocket endpoint. It supports Apple Music/Spotify via AppleScript and MediaRemote via a bundled adapter.
 
 <p align="center">
 <img src="./assets/logo.png" alt="drawing" width="200"/>
 </p>
 
-It lives as a menu bar application and is meant to run in the background. This application uses AppleScript, it is only compatible with macOS.
+It lives as a menu bar application and is meant to run in the background. It is only compatible with macOS.
 
 > [!WARNING]  
-> cbNP does not play well with macOS 26 a.k.a. Tahoe due to the way AppleScript in Apple Music was updated. Spotify support should work the same. Issue discussed [here](https://www.macscripter.net/t/scripting-changes-or-lack-thereof-in-macos-tahoe/77173/11).
+> On macOS 26 (Tahoe), AppleScript artwork retrieval from Apple Music is unreliable/unavailable. Use `MediaRemote` as the source if you need album artwork.
 
 ## Installation
 
@@ -21,23 +21,23 @@ Note that OSX may block the application from running. To allow it, go to `System
 
 ### From source
 
-Use the following command to compile the source code into an application bundle. In `dist` by default.
+Use the following command to compile the source code into an application bundle in `dist`:
 
 ```bash
-pyinstaller cbNP.spec
+uv run pyinstaller cbNP.spec
 ```
 
 If you wish to work just with an executable file, you can compile with:
 
 ```bash
-pyinstaller cbNP.py --onefile
+uv run pyinstaller cbNP.py --onefile
 ```
 
 Otherwise, it is enough to download the source code and run the python code directly.
 
 
 notes: 
-- You will need to install the required dependencies and pyinstaller using pip before compiling.
+- Install dependencies first: `uv sync`
 - Compiling for the executable does work, but is not any more lightweight as the application still compiles with the GUI libraries
 - Running the application as an executable will create an unused json file in the same directory as the executable. It is unused and pointless in this case.
 
@@ -63,6 +63,7 @@ Optional arguments:
 
 `MediaRemote` uses a bundled private-framework adapter for now-playing metadata and artwork retrieval.
 For signal quality, `MediaRemote` updates are filtered to common music app bundle IDs (Apple Music, Spotify, TIDAL, Deezer, Cider, VOX).
+When source is `Music` on Tahoe, the menu bar shows a warning recommending `MediaRemote` for artwork.
 
 ## Credits
 
