@@ -24,6 +24,14 @@ class MusicField:
         self.append_sep = append_sep
 
     def declare(self):
+        if self.key == "artwork":
+            return (
+                f"try\n"
+                f"set {self.var} to {self.script}\n"
+                f"on error\n"
+                f"set {self.var} to \"missing value\"\n"
+                f"end try"
+            )
         return f"set {self.var} to {self.script}"
 
     def append_separator(self):
@@ -127,6 +135,7 @@ def get_args():
     parser.add_argument(
         "-m", 
         "--media-player", 
-        help="The media player to use (default: 'Music').", 
+        help="The media player to use: Music, Spotify, or MediaRemote (default: 'Music').", 
+        choices=["Music", "Spotify", "MediaRemote"],
     )
     return parser.parse_args()
