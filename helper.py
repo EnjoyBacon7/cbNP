@@ -1,6 +1,19 @@
-from enum import Enum
 import subprocess
 import argparse
+import os
+
+
+def _load_app_version():
+    pyproject_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
+    try:
+        import tomllib
+        with open(pyproject_path, "rb") as f:
+            data = tomllib.load(f)
+        return data.get("project", {}).get("version", "2.1.0")
+    except Exception:
+        return "2.1.0"
+
+APP_VERSION = _load_app_version()
 
 SEPARATOR = "␟" # BS separator to enable simple regex splitting applescript result (Meh...)
 class MusicField:
@@ -44,20 +57,26 @@ fields_map = {
 def make_script_command(fields, media_player):
 
     fields_cmds = fields_map.get(media_player, {})
+    if not fields_cmds:
+        raise ValueError(f"Unsupported media player: {media_player}")
 
     commands = []
+    selected_fields = []
     for key in fields:
         field = fields_cmds.get(key)
+        if field is None:
+            raise ValueError(f"Unsupported field '{key}' for player '{media_player}'")
+        selected_fields.append(field)
         commands.append(field.declare())
-    for key in fields:
-        sep = fields_cmds.get(key).append_separator()
+    for field in selected_fields:
+        sep = field.append_separator()
         if sep:
             commands.append(sep)
-    return_vars = [fields_cmds.get(key).return_var() for key in fields]
+    return_vars = [field.return_var() for field in selected_fields]
     commands.append(f"return {{{', '.join(return_vars)}}}")
     return "\n".join(commands)
 
-def exec_command(fields, media_player, debug=False):
+def exec_command(fields, media_player, debug=False, timeout=5):
 
     script = f"""
         if application "{media_player}" is running then
@@ -69,7 +88,10 @@ def exec_command(fields, media_player, debug=False):
 
     ARGS = ["osascript", "-e", script]
 
-    output = subprocess.run(ARGS, capture_output=True, text=True)
+    try:
+        output = subprocess.run(ARGS, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"AppleScript command timed out after {timeout}s") from exc
 
     if output.stderr:
         raise RuntimeError(f"Error executing AppleScript: {output.stderr.strip()}")
@@ -85,19 +107,16 @@ def get_args():
         "-e", 
         "--endpoint", 
         help="The endpoint to connect to.",
-        default="ws://localhost:8000"
     )
     parser.add_argument(
         "-t", 
         "--token", 
         help="The API token to use.",
-        default="your_token"
     )
     parser.add_argument(
         "-i", 
         "--interval", 
         help="The interval in seconds to check for updates.", 
-        default=15, 
         type=int
     )
     parser.add_argument(
@@ -109,6 +128,5 @@ def get_args():
         "-m", 
         "--media-player", 
         help="The media player to use (default: 'Music').", 
-        default="Music"
     )
     return parser.parse_args()

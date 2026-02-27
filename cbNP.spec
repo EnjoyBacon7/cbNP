@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from helper import APP_VERSION
+
 
 a = Analysis(
     ['cbNP.py'],
@@ -52,6 +54,6 @@ app = BUNDLE(
         'LSUIElement': True,
         'LSBackgroundOnly': True,
         'NSUIElement': True,
-        'CFBundleShortVersionString': '2.1.0',
+        'CFBundleShortVersionString': APP_VERSION,
     },
 )
