@@ -18,6 +18,8 @@ class NowPlayingTrack:
     album: str
     identifier: str
     artwork_data: bytes | None
+    bundle_identifier: str
+    is_music_app: bool
 
 
 class MediaRemoteClient:
@@ -46,6 +48,12 @@ class MediaRemoteClient:
         artist = str(payload.get("artist") or "")
         album = str(payload.get("album") or "")
         identifier = str(payload.get("uniqueIdentifier") or "")
+        bundle_identifier = str(
+            payload.get("parentApplicationBundleIdentifier")
+            or payload.get("bundleIdentifier")
+            or ""
+        )
+        is_music_app = bool(payload.get("isMusicApp") is True)
 
         artwork_data = payload.get("artworkData")
         if isinstance(artwork_data, str):
@@ -63,6 +71,8 @@ class MediaRemoteClient:
             album=album,
             identifier=identifier,
             artwork_data=artwork_data,
+            bundle_identifier=bundle_identifier,
+            is_music_app=is_music_app,
         )
 
     def get_now_playing(self, timeout=1.0):
@@ -112,5 +122,7 @@ if __name__ == "__main__":
                 "album": track.album,
                 "identifier": track.identifier,
                 "artwork_bytes": len(track.artwork_data) if track.artwork_data else 0,
+                "bundle_identifier": track.bundle_identifier,
+                "is_music_app": track.is_music_app,
             }
         )
