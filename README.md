@@ -57,8 +57,14 @@ Required arguments:
 
 Optional arguments:
 - `-t` - The token to authenticate with the endpoint.
-- `-i` - The interval in seconds between updates. Default is 30 seconds.
+- `-i` - The interval in seconds between updates. Default is 15 seconds.
 - `-d` - Debug mode. Will print additional information to the console.
+
+## Configuration and logs
+
+- Preferences are saved to `~/Library/Application Support/cbNP/Pref.json`.
+- Logs are written to `~/Library/Application Support/cbNP/error.log`.
+- Tokens are redacted in logs.
 
 ## Endpoint
 
