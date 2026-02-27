@@ -1,6 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from helper import APP_VERSION
+from pathlib import Path
+import tomllib
+
+
+PROJECT_ROOT = Path.cwd()
+with open(PROJECT_ROOT / "pyproject.toml", "rb") as f:
+    APP_VERSION = tomllib.load(f).get("project", {}).get("version", "2.1.0")
 
 
 a = Analysis(
