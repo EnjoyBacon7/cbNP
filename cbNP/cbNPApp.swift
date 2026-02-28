@@ -9,9 +9,16 @@ import SwiftUI
 
 @main
 struct cbNPApp: App {
+    @State private var viewModel = AppViewModel()
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra(
+            "cbNP",
+            systemImage: "characters.uppercase"
+        ) {
+            ContentView(viewModel: viewModel)
+                .frame(width: 360, height: 500)
         }
+        .menuBarExtraStyle(.window)
     }
 }
