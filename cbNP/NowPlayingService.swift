@@ -2,6 +2,7 @@ import Foundation
 
 struct NowPlayingService {
     private let helper = AppleScriptHelper.shared
+    private let mediaRemote = MediaRemoteService()
     private let separator = "␟"
     private let defaultArtworkBase64 = ""
 
@@ -20,7 +21,16 @@ struct NowPlayingService {
             )
             return try await parseOutput(output, source: .spotify)
         case .mediaRemote:
-            throw NowPlayingError.unsupportedSource("MediaRemote is not implemented in Swift yet.")
+            // Try MediaRemote adapter; fall back to Music AppleScript if the
+            // playing app is not in the allowlist or the adapter returns nothing.
+            if let track = (try? await mediaRemote.fetchTrack()) ?? nil {
+                return track
+            }
+            let output = try await executeAppleScript(
+                fields: ["track", "artist", "album", "id", "artwork"],
+                mediaPlayer: .appleMusic
+            )
+            return try await parseOutput(output, source: .music)
         }
     }
 

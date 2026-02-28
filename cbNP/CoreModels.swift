@@ -6,7 +6,7 @@ enum MediaSource: String, CaseIterable, Codable {
     case mediaRemote = "MediaRemote"
 
     static var supportedInSwiftApp: [MediaSource] {
-        [.music, .spotify]
+        [.music, .spotify, .mediaRemote]
     }
 }
 
