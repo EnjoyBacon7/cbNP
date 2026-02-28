@@ -26,7 +26,7 @@ final class AppViewModel {
     private var reconnectTimer: Timer?
     private var currentTrackID: String?
     private var started = false
-    private var isConnecting = false
+    private var connectingTask: Task<Void, Never>?
 
     init() {
         let store = PreferencesStore()
@@ -110,7 +110,7 @@ final class AppViewModel {
 
         Task {
             await webSocketClient.disconnect()
-            await connectIfNeeded()
+            connectIfNeeded()
         }
     }
 
@@ -124,7 +124,9 @@ final class AppViewModel {
         Task {
             await webSocketClient.disconnect()
             connectionStatus = "Disconnected"
-            await connectIfNeeded()
+            connectingTask?.cancel()
+            connectingTask = nil
+            connectIfNeeded()
         }
     }
 
@@ -149,9 +151,7 @@ final class AppViewModel {
         reconnectTimer?.invalidate()
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self else { return }
-            Task {
-                await self.connectIfNeeded()
-            }
+            self.connectIfNeeded()
         }
         reconnectTimer?.tolerance = 0.5
     }
@@ -177,16 +177,20 @@ final class AppViewModel {
         heartbeatTimer?.tolerance = 2
     }
 
-    private func connectIfNeeded() async {
-        if isConnecting {
-            return
-        }
+    private func connectIfNeeded() {
+        // If a connection attempt is already in flight, don't start another.
+        guard connectingTask == nil else { return }
 
+        connectingTask = Task {
+            await _connect()
+            connectingTask = nil
+        }
+    }
+
+    private func _connect() async {
         if await webSocketClient.isConnected {
             return
         }
-        isConnecting = true
-        defer { isConnecting = false }
 
         guard let endpointURL = URL(string: preferences.endpoint), AppPreferences.isValidEndpoint(preferences.endpoint) else {
             setError("Invalid endpoint: \(preferences.endpoint)")
