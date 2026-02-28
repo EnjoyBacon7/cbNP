@@ -55,9 +55,9 @@ struct MediaRemoteService {
                 withExtension: "pl",
                 subdirectory: "mediaremote_adapter"
             ),
-            let frameworkURL = Bundle.main.url(
+            let fmwkURL = Bundle.main.url(
                 forResource: "MediaRemoteAdapter",
-                withExtension: "framework",
+                withExtension: "fmwk",
                 subdirectory: "mediaremote_adapter"
             ),
             let clientURL = Bundle.main.url(
@@ -69,13 +69,27 @@ struct MediaRemoteService {
             throw MediaRemoteError.adapterNotFound
         }
 
+        // The Perl script requires the framework path to end in ".framework".
+        // We expose the bundled .fmwk directory via a temporary symlink with the
+        // correct extension, then clean it up after the process exits.
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cbNP-mediaremote-\(UUID().uuidString)", isDirectory: true)
+        let frameworkLinkURL = tempDir.appendingPathComponent("MediaRemoteAdapter.framework")
+        do {
+            try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(at: frameworkLinkURL, withDestinationURL: fmwkURL)
+        } catch {
+            throw MediaRemoteError.launchFailed("Could not create framework symlink: \(error.localizedDescription)")
+        }
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
                 process.arguments = [
                     scriptURL.path,
-                    frameworkURL.path,
+                    frameworkLinkURL.path,
                     clientURL.path,
                     "get",
                 ]
