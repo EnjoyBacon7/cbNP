@@ -30,22 +30,21 @@ final class AppViewModel {
 
     init() {
         let store = PreferencesStore()
-        let loadedPreferences: AppPreferences
-
+        let prefs: AppPreferences
         do {
-            loadedPreferences = try store.loadPreferences()
+            prefs = try store.loadPreferences()
         } catch {
-            loadedPreferences = .default
+            prefs = .default
         }
 
-        preferences = loadedPreferences
+        preferences = prefs
         logger = AppLogger(logURL: store.logURL)
 
-        endpointInput = loadedPreferences.endpoint
-        tokenInput = loadedPreferences.token
-        intervalInput = String(loadedPreferences.interval)
-        selectedSource = MediaSource.supportedInSwiftApp.contains(loadedPreferences.mediaPlayer) ? loadedPreferences.mediaPlayer : .music
-        sourceWarning = Self.musicTahoeWarningIfNeeded(source: loadedPreferences.mediaPlayer)
+        endpointInput = prefs.endpoint
+        tokenInput = prefs.token
+        intervalInput = String(prefs.interval)
+        selectedSource = MediaSource.supportedInSwiftApp.contains(prefs.mediaPlayer) ? prefs.mediaPlayer : .music
+        sourceWarning = Self.musicTahoeWarningIfNeeded(source: prefs.mediaPlayer)
 
         logger.info("Starting cbNP")
     }
@@ -266,13 +265,5 @@ final class AppViewModel {
             await webSocketClient.disconnect()
             setError("WebSocket send failed: \(error.localizedDescription)")
         }
-    }
-}
-
-private extension Track {
-    func asDictionary() throws -> [String: Any] {
-        let data = try JSONEncoder().encode(self)
-        let object = try JSONSerialization.jsonObject(with: data)
-        return object as? [String: Any] ?? [:]
     }
 }

@@ -1,16 +1,8 @@
-//
-//  Helper.swift
-//  cbNP
-//
-//  Created by Camille Bizeul on 8/8/25.
-//
-
 import Foundation
 
 private let fieldSeparator = "␟"
 
 struct MusicField {
-
     var key: String
     var variable: String
     var script: String
@@ -19,93 +11,43 @@ struct MusicField {
     var allowFailure: Bool = false
 
     func declare() -> String {
-        let assignment: String
-        if coerceToString {
-            assignment = "set \(variable) to (\(script)) as string"
-        } else {
-            assignment = "set \(variable) to \(script)"
-        }
+        let assignment = coerceToString
+            ? "set \(variable) to (\(script)) as string"
+            : "set \(variable) to \(script)"
 
-        if allowFailure {
-            return """
-                try
-                    \(assignment)
-                on error
-                    set \(variable) to ""
-                end try
-                """
-        }
-
-        return assignment
+        guard allowFailure else { return assignment }
+        return """
+            try
+                \(assignment)
+            on error
+                set \(variable) to ""
+            end try
+            """
     }
 
-    func append() -> String {
-        if appendSeparator {
-            return "set \(variable) to \(variable) & \"\(fieldSeparator)\""
-        } else {
-            return ""
-        }
+    func separatorCommand() -> String {
+        appendSeparator ? "set \(variable) to \(variable) & \"\(fieldSeparator)\"" : ""
     }
 }
 
-private let appleMusicFields = [
-    MusicField(
-        key: "track",
-        variable: "trackName",
-        script: "name of current track"
-    ),
-    MusicField(
-        key: "artist",
-        variable: "trackArtist",
-        script: "artist of current track"
-    ),
-    MusicField(
-        key: "album",
-        variable: "trackAlbum",
-        script: "album of current track"
-    ),
-    MusicField(
-        key: "id",
-        variable: "trackId",
-        script: "id of current track as string"
-    ),
-    MusicField(
-        key: "artwork",
-        variable: "artworkData",
-        script: "get raw data of artwork 1 of current track",
-        appendSeparator: false,
-        allowFailure: true
-    ),
+private let appleMusicFields: [MusicField] = [
+    MusicField(key: "track",   variable: "trackName",   script: "name of current track"),
+    MusicField(key: "artist",  variable: "trackArtist", script: "artist of current track"),
+    MusicField(key: "album",   variable: "trackAlbum",  script: "album of current track"),
+    MusicField(key: "id",      variable: "trackId",     script: "id of current track as string"),
+    MusicField(key: "artwork", variable: "artworkData",
+               script: "get raw data of artwork 1 of current track",
+               appendSeparator: false, allowFailure: true),
 ]
 
-private let spotifyFields = [
-    MusicField(
-        key: "track",
-        variable: "trackName",
-        script: "name of current track"
-    ),
-    MusicField(
-        key: "artist",
-        variable: "trackArtist",
-        script: "artist of current track"
-    ),
-    MusicField(
-        key: "album",
-        variable: "trackAlbum",
-        script: "album of current track"
-    ),
-    MusicField(
-        key: "id",
-        variable: "trackId",
-        script: "id of current track as string"
-    ),
-    MusicField(
-        key: "artwork",
-        variable: "artworkData",
-        script: "get artwork url of current track",
-        appendSeparator: false,
-        allowFailure: true
-    ),
+private let spotifyFields: [MusicField] = [
+    MusicField(key: "track",   variable: "trackName",   script: "name of current track"),
+    MusicField(key: "artist",  variable: "trackArtist", script: "artist of current track"),
+    MusicField(key: "album",   variable: "trackAlbum",  script: "album of current track"),
+    MusicField(key: "id",      variable: "trackId",     script: "id of current track as string"),
+    MusicField(key: "artwork", variable: "artworkData",
+               script: "get artwork url of current track",
+               appendSeparator: false, allowFailure: true),
 ]
 
 enum MediaPlayer: String {
@@ -114,7 +56,6 @@ enum MediaPlayer: String {
 }
 
 class AppleScriptHelper {
-
     static let shared = AppleScriptHelper()
     private init() {}
 
@@ -127,7 +68,7 @@ class AppleScriptHelper {
         let script = """
             if application "\(mediaPlayer.rawValue)" is running then
                 tell application "\(mediaPlayer.rawValue)"
-                    \(createCommand(fields: fields, mediaPlayer: mediaPlayer))
+                    \(buildCommand(fields: fields, mediaPlayer: mediaPlayer))
                 end tell
             end if
             """
@@ -138,77 +79,54 @@ class AppleScriptHelper {
 
         var errorDict: NSDictionary?
         let output = appleScript.executeAndReturnError(&errorDict)
+
         if let error = errorDict {
             if let brief = error[NSAppleScript.errorBriefMessage] as? String,
-               brief.localizedCaseInsensitiveContains("isn't running") || brief.localizedCaseInsensitiveContains("is not running") {
+               brief.localizedCaseInsensitiveContains("isn't running") ||
+               brief.localizedCaseInsensitiveContains("is not running") {
                 throw AppleScriptError.noTrackPlaying
             }
-            if let errorNumber = error[NSAppleScript.errorNumber] as? Int, errorNumber == -1743 {
-                throw AppleScriptError.permissionDenied(mediaPlayer.rawValue)
-            }
-            if let errorNumber = error[NSAppleScript.errorNumber] as? Int, errorNumber == -600 {
-                throw AppleScriptError.noTrackPlaying
-            }
-            if let errorNumber = error[NSAppleScript.errorNumber] as? Int, errorNumber == -1728 {
-                throw AppleScriptError.noTrackPlaying
+            if let code = error[NSAppleScript.errorNumber] as? Int {
+                switch code {
+                case -1743: throw AppleScriptError.permissionDenied(mediaPlayer.rawValue)
+                case -600, -1728: throw AppleScriptError.noTrackPlaying
+                default: break
+                }
             }
             throw AppleScriptError.executionFailed(String(describing: error))
         }
 
-        // When the app is not running the outer if block falls through and returns nothing;
-        // NSAppleScript gives us an empty-string descriptor in that case.
+        // When the app is not running the outer `if` falls through with no result;
+        // NSAppleScript returns an empty-string descriptor in that case.
         return output.stringValue ?? ""
     }
 
-    func createCommand(fields: [String], mediaPlayer: MediaPlayer) -> String {
-
-        let fieldsArray = fieldsMap[mediaPlayer]!
+    // Builds a single-string AppleScript return value so that
+    // NSAppleEventDescriptor.stringValue is always non-nil.
+    private func buildCommand(fields: [String], mediaPlayer: MediaPlayer) -> String {
+        let allFields = fieldsMap[mediaPlayer]!
         var fieldDict = [String: MusicField]()
-        for field in fieldsArray {
-            fieldDict[field.key] = field
-        }
+        for field in allFields { fieldDict[field.key] = field }
 
         var commands: [String] = []
 
-        // Declare each variable
+        // 1. Declare each variable
+        for key in fields {
+            if let field = fieldDict[key] { commands.append(field.declare()) }
+        }
+        // 2. Append ␟ separator to text fields
         for key in fields {
             if let field = fieldDict[key] {
-                commands.append(field.declare())
+                let sep = field.separatorCommand()
+                if !sep.isEmpty { commands.append(sep) }
             }
         }
-
-        // Append separators between text fields (artwork has appendSeparator: false)
-        for key in fields {
-            if let field = fieldDict[key] {
-                let sep = field.append()
-                if !sep.isEmpty {
-                    commands.append(sep)
-                }
-            }
-        }
-
-        // Build a single concatenated string return value so that
-        // NSAppleEventDescriptor.stringValue is always non-nil.
-        // Artwork (last field, no separator) is concatenated last without a separator.
-        let textVars = fields.compactMap { key -> String? in
-            guard let field = fieldDict[key], field.appendSeparator else { return nil }
-            return field.variable
-        }
-        let artworkVar = fields.compactMap { key -> String? in
-            guard let field = fieldDict[key], !field.appendSeparator else { return nil }
-            return field.variable
-        }.first
-
-        var resultParts = textVars
-        if let aw = artworkVar {
-            resultParts.append(aw)
-        }
-
-        if resultParts.isEmpty {
-            commands.append("return \"\"")
-        } else {
-            commands.append("return " + resultParts.joined(separator: " & "))
-        }
+        // 3. Concatenate everything into one string and return
+        let textVars   = fields.compactMap { fieldDict[$0].flatMap { $0.appendSeparator  ? $0.variable : nil } }
+        let artworkVar = fields.compactMap { fieldDict[$0].flatMap { !$0.appendSeparator ? $0.variable : nil } }.first
+        var parts = textVars
+        if let aw = artworkVar { parts.append(aw) }
+        commands.append(parts.isEmpty ? "return \"\"" : "return \(parts.joined(separator: " & "))")
 
         return commands.joined(separator: "\n")
     }

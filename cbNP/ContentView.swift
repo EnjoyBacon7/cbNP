@@ -1,12 +1,4 @@
-//
-//  ContentView.swift
-//  cbNP
-//
-//  Created by Camille Bizeul on 8/8/25.
-//
-
 import SwiftUI
-import Observation
 
 struct ContentView: View {
     @Bindable var viewModel: AppViewModel
@@ -54,15 +46,9 @@ struct ContentView: View {
             }
 
             HStack(spacing: 10) {
-                Button("Save") {
-                    viewModel.savePreferencesFromInputs()
-                }
-                Button("Update now") {
-                    viewModel.updateNow()
-                }
-                Button("Reconnect") {
-                    viewModel.reconnectNow()
-                }
+                Button("Save") { viewModel.savePreferencesFromInputs() }
+                Button("Update now") { viewModel.updateNow() }
+                Button("Reconnect") { viewModel.reconnectNow() }
             }
 
             if !viewModel.lastError.isEmpty {
@@ -75,9 +61,7 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .onAppear {
-            viewModel.startIfNeeded()
-        }
+        .onAppear { viewModel.startIfNeeded() }
         .frame(minWidth: 340, minHeight: 420)
     }
 }
