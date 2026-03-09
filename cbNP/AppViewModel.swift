@@ -110,7 +110,7 @@ final class AppViewModel {
 
         Task {
             await webSocketClient.disconnect()
-            connectIfNeeded()
+            await connectIfNeeded()
         }
     }
 
@@ -126,7 +126,7 @@ final class AppViewModel {
             connectionStatus = "Disconnected"
             connectingTask?.cancel()
             connectingTask = nil
-            connectIfNeeded()
+            await connectIfNeeded()
         }
     }
 
@@ -151,7 +151,9 @@ final class AppViewModel {
         reconnectTimer?.invalidate()
         reconnectTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.connectIfNeeded()
+            Task {
+                await self.connectIfNeeded()
+            }
         }
         reconnectTimer?.tolerance = 0.5
     }
@@ -177,7 +179,7 @@ final class AppViewModel {
         heartbeatTimer?.tolerance = 2
     }
 
-    private func connectIfNeeded() {
+    private func connectIfNeeded() async {
         // If a connection attempt is already in flight, don't start another.
         guard connectingTask == nil else { return }
 

@@ -23,7 +23,7 @@ struct NowPlayingService {
         case .mediaRemote:
             // Try MediaRemote adapter; fall back to Music AppleScript if the
             // playing app is not in the allowlist or the adapter returns nothing.
-            if let track = (try? await mediaRemote.fetchTrack()) ?? nil {
+            if let track = try? await mediaRemote.fetchTrack() {
                 return track
             }
             let output = try await executeAppleScript(
