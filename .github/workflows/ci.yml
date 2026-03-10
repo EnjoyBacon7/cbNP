@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  test:
+    name: Test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: CGO_ENABLED=1 go test -race -v ./...
+
+  build:
+    name: Build (${{ matrix.arch }})
+    needs: [lint, test]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest
+            arch: arm64
+            goarch: arm64
+          - runner: macos-13
+            arch: amd64
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build binary
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          COMMIT="${GITHUB_SHA::7}"
+          go build -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
+            -o cbnp ./cmd/cbnp
+      - name: Build .app bundle
+        run: bash scripts/build-app.sh cbnp cbNP "${GITHUB_REF_NAME:-dev}"
+      - name: Create archive
+        run: |
+          tar -czf "cbNP-${{ matrix.arch }}.tar.gz" cbNP.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbNP-${{ matrix.arch }}
+          path: cbNP-${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*.tar.gz

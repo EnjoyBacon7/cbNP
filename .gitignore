@@ -1,9 +1,24 @@
-.env
-.python-version
+# OS
 .DS_Store
-/build
-/dist
-__pycache__/
+
+# IDE
 .VSCodeCounter/
+.idea/
+.vscode/
+
+# Go
+/cbnp
+/cbNP.app
+/dist/
+
+# Config (runtime)
 error.log
 Pref.json
+
+# Environment
+.env
+
+# Old Python artifacts (can remove after full migration)
+__pycache__/
+/build
+*.pyc
