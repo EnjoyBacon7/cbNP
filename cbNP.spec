@@ -6,7 +6,7 @@ import tomllib
 
 PROJECT_ROOT = Path.cwd()
 with open(PROJECT_ROOT / "pyproject.toml", "rb") as f:
-    APP_VERSION = tomllib.load(f).get("project", {}).get("version", "2.1.0")
+    APP_VERSION = tomllib.load(f).get("project", {}).get("version", "unknown")
 
 
 a = Analysis(
