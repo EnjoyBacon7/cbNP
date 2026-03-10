@@ -81,8 +81,12 @@ info "pyproject.toml updated"
 
 echo "--- [2/8] Committing version bump ---"
 git add pyproject.toml
-git commit -m "chore: bump version to $VERSION"
-info "Committed"
+if git diff --cached --quiet; then
+    info "pyproject.toml already at $VERSION, skipping commit"
+else
+    git commit -m "chore: bump version to $VERSION"
+    info "Committed"
+fi
 
 # ── step 3 — sync deps ────────────────────────────────────────────────────────
 echo "--- [3/8] uv sync ---"
