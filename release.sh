@@ -103,8 +103,8 @@ echo "--- [5/8] Creating DMG ---"
 rm -f "$DMG_NAME"
 
 # create-dmg (sindresorhus) auto-generates App + Applications alias layout.
-# It names the output after the app version; rename to our convention afterwards.
-create-dmg --overwrite --dmg-title="cbNP $VERSION" dist/cbNP.app .
+# It may exit non-zero if code signing is ambiguous — that's fine, the DMG is still valid.
+create-dmg --overwrite --dmg-title="cbNP $VERSION" dist/cbNP.app . || true
 # The tool outputs e.g. "cbNP 3.0.1.dmg" — rename to our convention
 CREATED_DMG="$(ls -1 "cbNP "*.dmg 2>/dev/null | head -1)"
 [[ -n "$CREATED_DMG" ]] || die "create-dmg did not produce a DMG file"
