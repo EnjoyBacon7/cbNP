@@ -209,14 +209,14 @@ func Watch(ctx context.Context) (<-chan Config, error) {
 	// do atomic save (write tmp + rename), which removes the watched inode.
 	cfgDir := filepath.Dir(cfgPath)
 	if err := watcher.Add(cfgDir); err != nil {
-		watcher.Close()
+		_ = watcher.Close()
 		return nil, fmt.Errorf("watch %s: %w", cfgDir, err)
 	}
 
 	ch := make(chan Config, 1)
 
 	go func() {
-		defer watcher.Close()
+		defer func() { _ = watcher.Close() }()
 		defer close(ch)
 
 		const debounce = 500 * time.Millisecond

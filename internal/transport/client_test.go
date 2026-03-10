@@ -23,7 +23,7 @@ func TestClientConnectAndSend(t *testing.T) {
 			t.Logf("accept error: %v", err)
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 
 		for {
 			_, data, err := conn.Read(r.Context())

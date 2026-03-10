@@ -41,10 +41,9 @@ type Client struct {
 	sendCh  chan []byte
 	stateCh chan ConnState
 
-	mu     sync.Mutex
-	conn   *websocket.Conn
-	state  ConnState
-	cancel context.CancelFunc
+	mu    sync.Mutex
+	conn  *websocket.Conn
+	state ConnState
 }
 
 // NewClient creates a new WebSocket client.
@@ -101,14 +100,14 @@ func (c *Client) connectAndServe(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			conn.Close(websocket.StatusNormalClosure, "shutting down")
+			_ = conn.Close(websocket.StatusNormalClosure, "shutting down")
 			return ctx.Err()
 		case msg := <-c.sendCh:
 			writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
 			err := conn.Write(writeCtx, websocket.MessageText, msg)
 			writeCancel()
 			if err != nil {
-				conn.Close(websocket.StatusInternalError, "write error")
+				_ = conn.Close(websocket.StatusInternalError, "write error")
 				return fmt.Errorf("write: %w", err)
 			}
 		}
@@ -174,14 +173,14 @@ func (c *Client) serveConn(ctx context.Context, conn *websocket.Conn) error {
 	for {
 		select {
 		case <-ctx.Done():
-			conn.Close(websocket.StatusNormalClosure, "shutting down")
+			_ = conn.Close(websocket.StatusNormalClosure, "shutting down")
 			return ctx.Err()
 		case msg := <-c.sendCh:
 			writeCtx, writeCancel := context.WithTimeout(ctx, 5*time.Second)
 			err := conn.Write(writeCtx, websocket.MessageText, msg)
 			writeCancel()
 			if err != nil {
-				conn.Close(websocket.StatusInternalError, "write error")
+				_ = conn.Close(websocket.StatusInternalError, "write error")
 				return fmt.Errorf("write: %w", err)
 			}
 		}
@@ -217,7 +216,7 @@ func (c *Client) UpdateEndpoint(endpoint string) {
 	c.mu.Unlock()
 
 	if conn != nil {
-		conn.Close(websocket.StatusNormalClosure, "endpoint changed")
+		_ = conn.Close(websocket.StatusNormalClosure, "endpoint changed")
 	}
 }
 
@@ -235,7 +234,7 @@ func (c *Client) Close() {
 	c.mu.Unlock()
 
 	if conn != nil {
-		conn.Close(websocket.StatusNormalClosure, "client closed")
+		_ = conn.Close(websocket.StatusNormalClosure, "client closed")
 	}
 }
 
