@@ -1,9 +1,24 @@
 import subprocess
 import argparse
 import os
+import sys
+import plistlib
 
 
 def _load_app_version():
+    # When running as a PyInstaller bundle, read the version from Info.plist
+    # (written by cbNP.spec) rather than pyproject.toml, which is not bundled.
+    if getattr(sys, "frozen", False):
+        try:
+            # Info.plist is at <bundle>/Contents/Info.plist;
+            # sys.executable is <bundle>/Contents/MacOS/cbNP
+            bundle = os.path.abspath(os.path.join(os.path.dirname(sys.executable), "..", ".."))
+            plist_path = os.path.join(bundle, "Contents", "Info.plist")
+            with open(plist_path, "rb") as f:
+                return plistlib.load(f).get("CFBundleShortVersionString", "unknown")
+        except Exception:
+            return "unknown"
+
     pyproject_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
     try:
         import tomllib
