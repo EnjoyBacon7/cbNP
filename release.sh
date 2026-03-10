@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 command -v uv         >/dev/null 2>&1 || die "'uv' not found — install it first"
 command -v gh         >/dev/null 2>&1 || die "'gh' not found — install GitHub CLI first"
 command -v git        >/dev/null 2>&1 || die "'git' not found"
-command -v create-dmg >/dev/null 2>&1 || die "'create-dmg' not found — run: brew install create-dmg"
+command -v create-dmg >/dev/null 2>&1 || die "'create-dmg' not found — run: npm install --global create-dmg  (or brew install sindresorhus/create-dmg/create-dmg)"
 
 cd "$SCRIPT_DIR"
 
@@ -59,7 +59,7 @@ echo "   1. Update version in pyproject.toml"
 echo "   2. Commit version bump"
 echo "   3. uv sync"
 echo "   4. uv run pyinstaller -y cbNP.spec"
-echo "   5. create-dmg → $DMG_NAME  (App + Applications alias)"
+  echo "   5. create-dmg → $DMG_NAME  (App + Applications alias, auto-layout)"
 echo "   6. git tag $TAG"
 echo "   7. git push + git push --tags"
 echo "   8. gh release create $TAG (attach $DMG_NAME)"
@@ -98,27 +98,13 @@ info "Build complete → dist/cbNP.app"
 echo "--- [5/8] Creating DMG ---"
 rm -f "$DMG_NAME"
 
-# Convert logo.png → temporary .icns for the DMG volume icon
-ICNS_TMP="$(mktemp -d)/cbNP.icns"
-ICONSET_TMP="$(mktemp -d)/cbNP.iconset"
-mkdir -p "$ICONSET_TMP"
-for size in 16 32 64 128 256 512; do
-    sips -z $size $size assets/logo.png --out "$ICONSET_TMP/icon_${size}x${size}.png"    >/dev/null 2>&1
-    sips -z $((size*2)) $((size*2)) assets/logo.png --out "$ICONSET_TMP/icon_${size}x${size}@2x.png" >/dev/null 2>&1
-done
-iconutil -c icns "$ICONSET_TMP" -o "$ICNS_TMP"
-
-create-dmg \
-    --volname "cbNP $VERSION" \
-    --volicon "$ICNS_TMP" \
-    --window-pos 200 120 \
-    --window-size 540 380 \
-    --icon-size 128 \
-    --icon "cbNP.app" 130 175 \
-    --app-drop-link 410 175 \
-    --hide-extension "cbNP.app" \
-    "$DMG_NAME" \
-    dist/cbNP.app
+# create-dmg (sindresorhus) auto-generates App + Applications alias layout.
+# It names the output after the app version; rename to our convention afterwards.
+create-dmg --overwrite --dmg-title="cbNP $VERSION" dist/cbNP.app .
+# The tool outputs e.g. "cbNP 3.0.1.dmg" — rename to our convention
+CREATED_DMG="$(ls -1 "cbNP "*.dmg 2>/dev/null | head -1)"
+[[ -n "$CREATED_DMG" ]] || die "create-dmg did not produce a DMG file"
+mv "$CREATED_DMG" "$DMG_NAME"
 
 info "Created $DMG_NAME"
 
