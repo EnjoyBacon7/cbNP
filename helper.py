@@ -9,9 +9,9 @@ def _load_app_version():
         import tomllib
         with open(pyproject_path, "rb") as f:
             data = tomllib.load(f)
-        return data.get("project", {}).get("version", "2.1.0")
+        return data.get("project", {}).get("version", "unknown")
     except Exception:
-        return "2.1.0"
+        return "unknown"
 
 APP_VERSION = _load_app_version()
 
@@ -101,13 +101,16 @@ def exec_command(fields, media_player, debug=False, timeout=5):
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"AppleScript command timed out after {timeout}s") from exc
 
-    if output.stderr:
+    if output.returncode != 0:
         raise RuntimeError(f"Error executing AppleScript: {output.stderr.strip()}")
     if debug:
         print(script)
         print(output.stdout)
         print(output.stderr)
-    return output.stdout.strip()
+    result = output.stdout.strip()
+    if not result:
+        raise RuntimeError(f"{media_player} is not running or returned no data")
+    return result
 
 def get_args():
     parser = argparse.ArgumentParser()

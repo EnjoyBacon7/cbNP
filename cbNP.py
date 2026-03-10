@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
 }
 ALLOWED_MEDIA_PLAYERS = {"Music", "Spotify", "MediaRemote"}
 MUSIC_TAHOE_WARNING_KEY = "source-warning"
+TAHOE_MACOS_MAJOR = 26  # macOS 26 = Tahoe (first version to break Music artwork)
 COMMON_MEDIAREMOTE_BUNDLES = {
     "com.apple.Music",
     "com.spotify.client",
@@ -122,6 +123,8 @@ class cbNPApp(rumps.App):
         Parses arguments, creates the menu items, and opens the websocket connection.
         """
 
+        self._log_file = open(LOG_PATH, "a", buffering=1)  # line-buffered; closed in exit_application
+
         self.log_info("Starting cbNP")
 
         super(cbNPApp, self).__init__(APP_NAME, icon=ICON_PATH, quit_button=None)  # type: ignore[arg-type]
@@ -190,7 +193,7 @@ class cbNPApp(rumps.App):
             return False
         try:
             major = int(version.split(".")[0])
-            return major >= 26
+            return major >= TAHOE_MACOS_MAJOR
         except (ValueError, IndexError):
             return False
 
@@ -220,6 +223,8 @@ class cbNPApp(rumps.App):
         return media_player in ALLOWED_MEDIA_PLAYERS
 
     def _validate_config(self, data):
+        # Start from defaults, then layer in known-valid values from data.
+        # Unknown keys from data are preserved so user-added fields are not silently dropped.
         config = dict(DEFAULT_CONFIG)
 
         endpoint = data.get("endpoint", config["endpoint"])
@@ -239,6 +244,11 @@ class cbNPApp(rumps.App):
         media_player = data.get("media_player", config["media_player"])
         if self._valid_media_player(media_player):
             config["media_player"] = media_player
+
+        # Re-attach any extra keys the user may have added
+        for key, value in data.items():
+            if key not in config:
+                config[key] = value
 
         return config
 
@@ -283,7 +293,8 @@ class cbNPApp(rumps.App):
         if self.args.media_player and self._valid_media_player(self.args.media_player):
             overridden["media_player"] = self.args.media_player
 
-        self.save_preferences(overridden)
+        if overridden != config:
+            self.save_preferences(overridden)
         return overridden
 
     def _handle_connection_loss(self, context, error):
@@ -320,8 +331,12 @@ class cbNPApp(rumps.App):
         Handles the preferences window.
         """
 
-        with open(PREF_PATH, "r") as f:
-            cur_conf = f.read()
+        try:
+            with open(PREF_PATH, "r") as f:
+                cur_conf = f.read()
+        except Exception as e:
+            self.log_error(f"Could not read preferences file: {e}", display=False)
+            cur_conf = json.dumps(DEFAULT_CONFIG, indent=4)
 
         pref = rumps.Window(
             message="Preferences",
@@ -344,7 +359,12 @@ class cbNPApp(rumps.App):
                 self.args.interval = data["interval"]
                 self.args.media_player = data["media_player"]
 
-                self.interval_timer.interval = self.args.interval
+                # Restart interval timer if the cadence changed
+                if self.interval_timer.interval != self.args.interval:
+                    self.interval_timer.stop()
+                    self.interval_timer.interval = self.args.interval
+                    if self.websocket_conn is not None:
+                        self.interval_timer.start()
 
                 self.save_preferences(data)
             except Exception as e:
@@ -445,7 +465,9 @@ class cbNPApp(rumps.App):
 
         worker = threading.Thread(target=_runner, daemon=True)
         worker.start()
-        worker.join(REQUEST_TIMEOUT)
+        # Give the worker a short grace period beyond the inner subprocess timeout
+        # to avoid blocking the main thread for twice REQUEST_TIMEOUT.
+        worker.join(REQUEST_TIMEOUT + 1)
 
         if worker.is_alive() or result["error"] is not None:
             error = result["error"] if result["error"] is not None else "request timed out"
@@ -506,6 +528,11 @@ class cbNPApp(rumps.App):
         except Exception as e:
             self.log_error(f"Error shutting down cleanly: {e}", display=False)
 
+        try:
+            self._log_file.close()
+        except Exception:
+            pass
+
         rumps.quit_application()
 
     """ ----------------------------------------------------- """
@@ -526,6 +553,8 @@ class cbNPApp(rumps.App):
             future.result(timeout=REQUEST_TIMEOUT)
         except Exception as e:
             self.log_error(f"Error opening websocket connection: {e}. Retrying...")
+            # Stop before (re)starting to avoid accumulating concurrent timers
+            self.connection_timer.stop()
             self.connection_timer.start()
             return
 
@@ -584,7 +613,7 @@ class cbNPApp(rumps.App):
 
         message = json.dumps(message)
 
-        self.log_info(f"Sending update to websocket: {track} - Message size: {sys.getsizeof(message) / 1024} KB")
+        self.log_info(f"Sending update to websocket: {track} - Message size: {len(message) / 1024:.1f} KB")
         await self.websocket_conn.send(message)
 
     async def close_conn(self):
@@ -610,9 +639,8 @@ class cbNPApp(rumps.App):
             i (str): The info message to log.
         """
         print(i)
-        with open(LOG_PATH, "a") as f:
-            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"{time} - INFO: {i}\n")
+        time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._log_file.write(f"{time} - INFO: {i}\n")
 
     def log_warning(self, w):
         """
@@ -622,9 +650,8 @@ class cbNPApp(rumps.App):
             w (str): The warning message to log.
         """
         print(w)
-        with open(LOG_PATH, "a") as f:
-            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"{time} - WARNING: {w}\n")
+        time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._log_file.write(f"{time} - WARNING: {w}\n")
 
     def log_error(self, e, display=True):
         """
@@ -635,9 +662,8 @@ class cbNPApp(rumps.App):
             display (bool): Whether to display the error message in the app.
         """
         print(e)
-        with open(LOG_PATH, "a") as f:
-            time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"{time} - ERROR: {e}\n")
+        time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self._log_file.write(f"{time} - ERROR: {e}\n")
         if display:
             err_menuitem = rumps.MenuItem('err')
             err_menuitem.title = f'Error: {e}'
