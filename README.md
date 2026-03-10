@@ -1,4 +1,4 @@
-# cbNP
+# klNP
 
 A macOS menu bar app that retrieves now-playing data and posts it to a websocket endpoint. It supports Apple Music/Spotify via AppleScript and MediaRemote via a bundled adapter.
 
