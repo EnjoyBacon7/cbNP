@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # release.sh — local build and release script for cbNP
-# Usage: ./release.sh <version>   e.g. ./release.sh 3.1.0
+# Usage: ./release.sh <version> [--yes]   e.g. ./release.sh 3.1.0
 
 set -euo pipefail
 
@@ -9,8 +9,16 @@ die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "  $*"; }
 
 # ── args ─────────────────────────────────────────────────────────────────────
-[[ $# -eq 1 ]] || die "Usage: $0 <version>  (e.g. $0 3.1.0)"
-VERSION="$1"
+AUTO_YES=false
+POSITIONAL=()
+for arg in "$@"; do
+    case "$arg" in
+        --yes|-y) AUTO_YES=true ;;
+        *) POSITIONAL+=("$arg") ;;
+    esac
+done
+[[ ${#POSITIONAL[@]} -eq 1 ]] || die "Usage: $0 <version> [--yes]  (e.g. $0 3.1.0)"
+VERSION="${POSITIONAL[0]}"
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Version must be in X.Y.Z format, got: $VERSION"
 
 TAG="v${VERSION}"
@@ -57,8 +65,12 @@ echo "   7. git push + git push --tags"
 echo "   8. gh release create $TAG (attach $DMG_NAME)"
 echo "========================================"
 echo ""
-read -r -p "Proceed? [y/N] " CONFIRM
-[[ "${CONFIRM,,}" == "y" ]] || { echo "Aborted."; exit 0; }
+if [[ "$AUTO_YES" == true ]]; then
+    echo "  (--yes flag set, skipping confirmation)"
+else
+    read -r -p "Proceed? [y/N] " CONFIRM
+    [[ "${CONFIRM,,}" == "y" ]] || { echo "Aborted."; exit 0; }
+fi
 
 # ── step 1 & 2 — bump version ─────────────────────────────────────────────────
 echo ""
