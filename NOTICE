@@ -1,0 +1,16 @@
+cbNP
+Copyright 2026 Camille Bizeul
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+    http://www.apache.org/licenses/LICENSE-2.0
+
+THIRD-PARTY COMPONENTS
+
+This software includes or is derived from the following third-party works:
+
+  mediaremote_adapter/
+  - MediaRemote adapter framework and test client
+  - Original work by ungive (https://github.com/ungive)
+  - Source: https://github.com/ungive/mediaremote-adapter
+  - Licensed under the MIT License
