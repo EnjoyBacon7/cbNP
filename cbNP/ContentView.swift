@@ -3,29 +3,32 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var viewModel: AppViewModel
 
+    private let labelWidth: CGFloat = 64
+    private let fieldHeight: CGFloat = 26
+
     var body: some View {
         VStack(spacing: 0) {
-            headerSection
+            header
             Divider()
-            preferencesSection
+            form
             Divider()
-            footerSection
+            footer
         }
-        .frame(width: 340)
+        .frame(width: 320)
         .onAppear { viewModel.startIfNeeded() }
     }
 
     // MARK: - Header
 
-    private var headerSection: some View {
-        HStack(alignment: .center, spacing: 12) {
+    private var header: some View {
+        HStack(spacing: 10) {
             Image("AppIcon")
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(viewModel.currentTrackTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
@@ -34,14 +37,14 @@ struct ContentView: View {
                 HStack(spacing: 5) {
                     Circle()
                         .fill(statusColor)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 6, height: 6)
                     Text(viewModel.connectionStatus)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
             Button {
                 viewModel.updateNow()
@@ -52,39 +55,43 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .help("Update now")
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 
-    // MARK: - Preferences
+    // MARK: - Form
 
-    private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            LabeledField(label: "Endpoint") {
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            field("Endpoint") {
                 TextField("wss://…", text: $viewModel.endpointInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
             }
 
-            LabeledField(label: "Token") {
+            field("Token") {
                 SecureField("Auth token", text: $viewModel.tokenInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12, design: .monospaced))
             }
 
-            LabeledField(label: "Interval") {
-                HStack(spacing: 4) {
+            row("Interval") {
+                HStack(spacing: 8) {
                     TextField("15", text: $viewModel.intervalInput)
                         .textFieldStyle(.plain)
                         .font(.system(size: 12))
-                        .frame(maxWidth: 40)
-                    Text("s")
-                        .font(.system(size: 12))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 6)
+                        .frame(width: 48, height: fieldHeight)
+                        .background(fieldBackground)
+                    Text("seconds")
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
                 }
             }
 
-            LabeledField(label: "Source") {
+            row("Source") {
                 Picker("", selection: $viewModel.selectedSource) {
                     ForEach(MediaSource.supportedInSwiftApp, id: \.self) { source in
                         Text(source.rawValue).tag(source)
@@ -95,27 +102,58 @@ struct ContentView: View {
             }
 
             if !viewModel.sourceWarning.isEmpty {
-                Text(viewModel.sourceWarning)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
+                note(viewModel.sourceWarning, color: .orange)
             }
 
             if !viewModel.lastError.isEmpty {
-                Text(viewModel.lastError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                note(viewModel.lastError, color: .red)
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    // A labelled row whose trailing content fills a bordered field box.
+    private func field<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        row(label) {
+            content()
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, minHeight: fieldHeight, alignment: .leading)
+                .background(fieldBackground)
+        }
+    }
+
+    // A labelled row with arbitrary trailing content (no implicit field box).
+    private func row<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: labelWidth, alignment: .leading)
+            content()
+        }
+    }
+
+    private var fieldBackground: some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(.separator, lineWidth: 1)
+            )
+    }
+
+    private func note(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, labelWidth + 10)
     }
 
     // MARK: - Footer
 
-    private var footerSection: some View {
+    private var footer: some View {
         HStack(spacing: 8) {
             Button("Save") { viewModel.savePreferencesFromInputs() }
                 .buttonStyle(.borderedProminent)
@@ -128,11 +166,11 @@ struct ContentView: View {
             Spacer()
 
             Button("Quit") { NSApp.terminate(nil) }
-                .buttonStyle(.plain)
-                .font(.system(size: 11))
+                .buttonStyle(.borderless)
+                .controlSize(.small)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
@@ -143,36 +181,6 @@ struct ContentView: View {
         case "Connected": return .green
         case "Connecting...": return .yellow
         default: return .red
-        }
-    }
-}
-
-// MARK: - LabeledField
-
-private struct LabeledField<Content: View>: View {
-    let label: String
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 0) {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(.background)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .strokeBorder(.separator, lineWidth: 0.5)
-                    )
-
-                content()
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-            }
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
