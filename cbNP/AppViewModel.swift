@@ -5,7 +5,7 @@ import Observation
 @Observable
 @MainActor
 final class AppViewModel {
-    var connectionStatus = "Disconnected"
+    var connectionStatus: ConnectionStatus = .disconnected
     var trackTitle = "No track playing"
     var trackArtist = ""
     var artwork: NSImage?
@@ -32,16 +32,15 @@ final class AppViewModel {
     private var connectingTask: Task<Void, Never>?
 
     init() {
-        let store = PreferencesStore()
         let prefs: AppPreferences
         do {
-            prefs = try store.loadPreferences()
+            prefs = try preferencesStore.loadPreferences()
         } catch {
             prefs = .default
         }
 
         preferences = prefs
-        logger = AppLogger(logURL: store.logURL)
+        logger = AppLogger(logURL: preferencesStore.logURL)
 
         endpointInput = prefs.endpoint
         tokenInput = prefs.token
@@ -62,16 +61,20 @@ final class AppViewModel {
     }
 
     func stop() {
-        pollTimer?.invalidate()
-        heartbeatTimer?.invalidate()
+        stopOperationalTimers()
         reconnectTimer?.invalidate()
-        pollTimer = nil
-        heartbeatTimer = nil
         reconnectTimer = nil
 
         Task {
             await webSocketClient.disconnect()
         }
+    }
+
+    private func stopOperationalTimers() {
+        pollTimer?.invalidate()
+        heartbeatTimer?.invalidate()
+        pollTimer = nil
+        heartbeatTimer = nil
     }
 
     func savePreferencesFromInputs() {
@@ -106,10 +109,7 @@ final class AppViewModel {
         selectedSource = draft.mediaPlayer
         refreshSourceWarning()
 
-        pollTimer?.invalidate()
-        heartbeatTimer?.invalidate()
-        pollTimer = nil
-        heartbeatTimer = nil
+        stopOperationalTimers()
 
         Task {
             await webSocketClient.disconnect()
@@ -126,7 +126,7 @@ final class AppViewModel {
     func reconnectNow() {
         Task {
             await webSocketClient.disconnect()
-            connectionStatus = "Disconnected"
+            connectionStatus = .disconnected
             connectingTask?.cancel()
             connectingTask = nil
             await connectIfNeeded()
@@ -162,8 +162,7 @@ final class AppViewModel {
     }
 
     private func startOperationalTimers() {
-        pollTimer?.invalidate()
-        heartbeatTimer?.invalidate()
+        stopOperationalTimers()
 
         pollTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(preferences.interval), repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -199,22 +198,22 @@ final class AppViewModel {
 
         guard let endpointURL = URL(string: preferences.endpoint), AppPreferences.isValidEndpoint(preferences.endpoint) else {
             setError("Invalid endpoint: \(preferences.endpoint)")
-            connectionStatus = "Invalid endpoint"
+            connectionStatus = .invalidEndpoint
             return
         }
 
-        connectionStatus = "Connecting..."
+        connectionStatus = .connecting
         await webSocketClient.connect(endpoint: endpointURL)
 
         do {
             try await webSocketClient.send(jsonObject: ["type": "heartbeat"])
-            connectionStatus = "Connected"
+            connectionStatus = .connected
             lastError = ""
             logger.info("WebSocket connected on \(preferences.endpoint)")
             startOperationalTimers()
             await sendUpdateIfPossible(force: true)
         } catch {
-            connectionStatus = "Disconnected"
+            connectionStatus = .disconnected
             await webSocketClient.disconnect()
             logger.warning("Connection failed: \(error.localizedDescription)")
         }
@@ -224,7 +223,7 @@ final class AppViewModel {
         do {
             try await webSocketClient.send(jsonObject: ["type": "heartbeat"])
         } catch {
-            connectionStatus = "Disconnected"
+            connectionStatus = .disconnected
             logger.warning("Heartbeat failed: \(error.localizedDescription)")
             await webSocketClient.disconnect()
         }
@@ -232,7 +231,7 @@ final class AppViewModel {
 
     private func sendUpdateIfPossible(force: Bool) async {
         if !(await webSocketClient.isConnected) {
-            connectionStatus = "Disconnected"
+            connectionStatus = .disconnected
             return
         }
 
@@ -261,7 +260,7 @@ final class AppViewModel {
             currentTrackID = track.id
             applyTrackDisplay(track)
 
-            let payload = try track.asDictionary()
+            let payload = track.asDictionary()
             try await webSocketClient.send(jsonObject: [
                 "type": "update",
                 "payload": payload,
@@ -269,7 +268,7 @@ final class AppViewModel {
             ])
             lastError = ""
         } catch {
-            connectionStatus = "Disconnected"
+            connectionStatus = .disconnected
             await webSocketClient.disconnect()
             setError("WebSocket send failed: \(error.localizedDescription)")
         }

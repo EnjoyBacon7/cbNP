@@ -42,7 +42,7 @@ struct ContentView: View {
                     Circle()
                         .fill(statusColor)
                         .frame(width: 6, height: 6)
-                    Text(viewModel.connectionStatus)
+                    Text(viewModel.connectionStatus.displayText)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -210,9 +210,9 @@ struct ContentView: View {
 
     private var statusColor: Color {
         switch viewModel.connectionStatus {
-        case "Connected": return .green
-        case "Connecting...": return .yellow
-        default: return .red
+        case .connected: return .green
+        case .connecting: return .yellow
+        case .disconnected, .invalidEndpoint: return .red
         }
     }
 }

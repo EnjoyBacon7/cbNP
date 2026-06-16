@@ -1,5 +1,26 @@
 import Foundation
 
+// Field separator (U+241F SYMBOL FOR UNIT SEPARATOR) placed between now-playing
+// fields. The script generator (AppleScriptHelper) and the parser
+// (NowPlayingService) must agree on this byte.
+let fieldSeparator = "␟"
+
+enum ConnectionStatus {
+    case disconnected
+    case connecting
+    case connected
+    case invalidEndpoint
+
+    var displayText: String {
+        switch self {
+        case .disconnected: return "Disconnected"
+        case .connecting: return "Connecting..."
+        case .connected: return "Connected"
+        case .invalidEndpoint: return "Invalid endpoint"
+        }
+    }
+}
+
 enum MediaSource: String, CaseIterable, Codable {
     case music = "Music"
     case spotify = "Spotify"
@@ -108,9 +129,13 @@ struct Track: Codable, Equatable {
     var artwork: String
     var id: String
 
-    func asDictionary() throws -> [String: Any] {
-        let data = try JSONEncoder().encode(self)
-        let object = try JSONSerialization.jsonObject(with: data)
-        return object as? [String: Any] ?? [:]
+    func asDictionary() -> [String: Any] {
+        [
+            "name": name,
+            "artist": artist,
+            "album": album,
+            "artwork": artwork,
+            "id": id,
+        ]
     }
 }
