@@ -85,7 +85,7 @@ final class AppViewModel {
         ).validated()
 
         guard AppPreferences.isValidEndpoint(draft.endpoint) else {
-            setError("Endpoint must be ws:// or wss://")
+            setError("Endpoint must be wss:// (ws:// is allowed only for localhost)")
             return
         }
 

@@ -41,6 +41,10 @@ struct PreferencesStore {
         try ensureRuntimePaths()
         let data = try JSONEncoder.pretty.encode(preferences.validated())
         try data.write(to: preferencesURL, options: .atomic)
+        // The file holds the auth token, so restrict it to the owner.
+        // Atomic writes replace the file, so permissions must be reapplied
+        // after every save.
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: preferencesURL.path)
     }
 }
 

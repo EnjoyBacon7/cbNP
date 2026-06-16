@@ -95,21 +95,31 @@ struct MediaRemoteService {
 
                 do {
                     try process.run()
-                    process.waitUntilExit()
-                    timeoutItem.cancel()
                 } catch {
                     timeoutItem.cancel()
                     continuation.resume(throwing: MediaRemoteError.launchFailed(error.localizedDescription))
                     return
                 }
 
+                // Drain stdout and stderr concurrently before waiting on exit.
+                // Reading only after waitUntilExit() can deadlock if the adapter
+                // writes more than the pipe buffer (~64 KB) holds.
+                var errData = Data()
+                let drainGroup = DispatchGroup()
+                DispatchQueue.global(qos: .userInitiated).async(group: drainGroup) {
+                    errData = stderr.fileHandleForReading.readDataToEndOfFile()
+                }
+                let raw = stdout.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                drainGroup.wait()
+                timeoutItem.cancel()
+
                 guard process.terminationStatus == 0 else {
-                    let errOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                    let errOutput = String(data: errData, encoding: .utf8) ?? ""
                     continuation.resume(throwing: MediaRemoteError.adapterFailed(errOutput.trimmingCharacters(in: .whitespacesAndNewlines)))
                     return
                 }
 
-                let raw = stdout.fileHandleForReading.readDataToEndOfFile()
                 let trimmed = raw.trimmingWhitespace()
                 if trimmed.isEmpty {
                     continuation.resume(returning: nil)
