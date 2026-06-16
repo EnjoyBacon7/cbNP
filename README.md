@@ -1,4 +1,9 @@
-# cbNP
+# cbNP (Python — deprecated)
+
+> [!CAUTION]
+> **This Python implementation is deprecated and no longer maintained.**
+> It now lives on the `legacy-python` branch of [EnjoyBacon7/cbNP](https://github.com/EnjoyBacon7/cbNP) for reference only.
+> Active development has moved to the native Swift rewrite on the `main` branch. Please use that going forward.
 
 A macOS menu bar app that retrieves now-playing data and posts it to a websocket endpoint. It supports Apple Music/Spotify via AppleScript and MediaRemote via a bundled adapter.
 
