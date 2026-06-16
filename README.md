@@ -12,15 +12,43 @@ The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the back
 - macOS 26.0 (Tahoe) or later
 - Xcode 26 or later to build from source
 
-## Building
+## Install
 
-Open the project in Xcode and build/run the `cbNP` scheme:
+Download the latest `cbNP-x.y.z.dmg` from the [Releases](https://github.com/EnjoyBacon7/cbNP/releases) page, open it, and drag **cbNP** to **Applications**. The app is signed with a development certificate but not notarized, so on first launch right-click it and choose **Open** to clear Gatekeeper, then confirm.
+
+## Building and running
+
+### From Xcode
 
 ```bash
 open cbNP.xcodeproj
 ```
 
-Then build with **⌘R**. The app appears as an icon in the menu bar.
+Select the `cbNP` scheme and press **⌘R**. The app launches into the menu bar (no Dock icon); click the menu bar icon to open the popover. Quit it with the **Quit** button in the popover.
+
+### From the command line
+
+Build and launch a Debug build:
+
+```bash
+xcodebuild -scheme cbNP -configuration Debug -derivedDataPath build build
+open build/Build/Products/Debug/cbNP.app
+```
+
+For a Release build, use `-configuration Release` (output lands under `build/Build/Products/Release/`).
+
+### Packaging a DMG
+
+Build a Release `.app`, then stage it alongside an `/Applications` shortcut and create a compressed disk image:
+
+```bash
+xcodebuild -scheme cbNP -configuration Release -derivedDataPath build build
+
+stage=$(mktemp -d)
+cp -R build/Build/Products/Release/cbNP.app "$stage/"
+ln -s /Applications "$stage/Applications"
+hdiutil create -volname "cbNP" -srcfolder "$stage" -ov -format UDZO cbNP.dmg
+```
 
 ## Usage
 
