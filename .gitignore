@@ -17,6 +17,11 @@ DerivedData/
 .build/
 .swiftpm/
 
+# Secrets / local config
+.env
+.env.*
+*.pem
+
 # Misc
 *.moved-aside
 *.hmap
