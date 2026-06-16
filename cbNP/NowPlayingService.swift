@@ -3,7 +3,6 @@ import Foundation
 struct NowPlayingService {
     private let helper = AppleScriptHelper.shared
     private let mediaRemote = MediaRemoteService()
-    private let separator = "␟"
     private let defaultArtworkBase64 = ""
 
     func fetchTrack(source: MediaSource) async throws -> Track {
@@ -39,7 +38,9 @@ struct NowPlayingService {
             throw NowPlayingError.noTrackPlaying
         }
 
-        let fields = split(output, separator: separator, maxSplits: 4)
+        let fields = output
+            .split(separator: Character(fieldSeparator), maxSplits: 4, omittingEmptySubsequences: false)
+            .map(String.init)
         guard fields.count == 5 else {
             throw NowPlayingError.invalidFormat(output)
         }
@@ -109,25 +110,6 @@ struct NowPlayingService {
         }
     }
 
-    private func split(_ input: String, separator: String, maxSplits: Int) -> [String] {
-        guard maxSplits > 0 else {
-            return [input]
-        }
-
-        var parts: [String] = []
-        var remainder = input[...]
-
-        for _ in 0..<maxSplits {
-            guard let range = remainder.range(of: separator) else {
-                break
-            }
-            parts.append(String(remainder[..<range.lowerBound]))
-            remainder = remainder[range.upperBound...]
-        }
-
-        parts.append(String(remainder))
-        return parts
-    }
 }
 
 enum NowPlayingError: LocalizedError {

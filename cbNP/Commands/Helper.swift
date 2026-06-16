@@ -1,7 +1,5 @@
 import Foundation
 
-private let fieldSeparator = "␟"
-
 struct MusicField {
     var key: String
     var variable: String
