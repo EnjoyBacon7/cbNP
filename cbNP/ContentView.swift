@@ -21,18 +21,22 @@ struct ContentView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image("AppIcon")
-                .resizable()
-                .interpolation(.high)
-                .frame(width: 34, height: 34)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        HStack(alignment: .center, spacing: 12) {
+            artwork
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(viewModel.currentTrackTitle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(viewModel.trackTitle)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
+
+                if !viewModel.trackArtist.isEmpty {
+                    Text(viewModel.trackArtist)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
                 HStack(spacing: 5) {
                     Circle()
@@ -42,6 +46,7 @@ struct ContentView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
+                .padding(.top, 1)
             }
 
             Spacer(minLength: 8)
@@ -57,6 +62,33 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        let size: CGFloat = 50
+        Group {
+            if let image = viewModel.artwork {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    Rectangle().fill(.quaternary)
+                    Image(systemName: "music.note")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5)
+        )
+        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
     }
 
     // MARK: - Form

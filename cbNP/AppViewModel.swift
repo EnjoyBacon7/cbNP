@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -5,7 +6,9 @@ import Observation
 @MainActor
 final class AppViewModel {
     var connectionStatus = "Disconnected"
-    var currentTrackTitle = "No track playing"
+    var trackTitle = "No track playing"
+    var trackArtist = ""
+    var artwork: NSImage?
     var sourceWarning = ""
     var lastError = ""
 
@@ -238,15 +241,14 @@ final class AppViewModel {
             track = try await nowPlayingService.fetchTrack(source: preferences.mediaPlayer)
         } catch NowPlayingError.noTrackPlaying {
             logger.info("fetchTrack: noTrackPlaying (source: \(preferences.mediaPlayer.rawValue))")
-            currentTrackID = nil
-            currentTrackTitle = "No track playing"
+            clearTrackDisplay()
             return
         } catch NowPlayingError.invalidFormat(let raw) {
-            currentTrackTitle = "No track playing"
+            clearTrackDisplay()
             setError("fetchTrack: invalidFormat — raw output: \(raw.prefix(200))")
             return
         } catch {
-            currentTrackTitle = "No track playing"
+            clearTrackDisplay()
             setError("fetchTrack failed: \(error.localizedDescription)")
             return
         }
@@ -257,7 +259,7 @@ final class AppViewModel {
             }
 
             currentTrackID = track.id
-            currentTrackTitle = "\(track.name) by \(track.artist)"
+            applyTrackDisplay(track)
 
             let payload = try track.asDictionary()
             try await webSocketClient.send(jsonObject: [
@@ -271,5 +273,28 @@ final class AppViewModel {
             await webSocketClient.disconnect()
             setError("WebSocket send failed: \(error.localizedDescription)")
         }
+    }
+
+    private func applyTrackDisplay(_ track: Track) {
+        trackTitle = track.name.isEmpty ? "Unknown track" : track.name
+        trackArtist = track.artist
+        artwork = Self.decodeArtwork(track.artwork)
+    }
+
+    private func clearTrackDisplay() {
+        currentTrackID = nil
+        trackTitle = "No track playing"
+        trackArtist = ""
+        artwork = nil
+    }
+
+    private static func decodeArtwork(_ base64: String) -> NSImage? {
+        guard !base64.isEmpty,
+              let data = Data(base64Encoded: base64, options: .ignoreUnknownCharacters),
+              let image = NSImage(data: data)
+        else {
+            return nil
+        }
+        return image
     }
 }
