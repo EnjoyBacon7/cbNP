@@ -16,9 +16,13 @@ The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the back
 
 [Download cbNP-4.0.2.dmg](https://github.com/EnjoyBacon7/cbNP/releases/download/v4.0.2/cbNP-4.0.2.dmg), open it, and drag **cbNP** to **Applications**.
 
-> **The app is signed with a development certificate but is not notarized by Apple**, so macOS blocks the first launch with “cbNP cannot be opened because Apple cannot check it for malicious software”. To run it anyway: open cbNP once and dismiss that warning, then go to **System Settings > Privacy & Security**, scroll to the message about cbNP being blocked, and click **Open Anyway**. Only the first launch needs this.
+> **The app is signed with a development certificate and is not notarized by Apple**, so macOS blocks the first launch — “Apple could not verify ‘cbNP’ is free of malware”. The app has to be allowed to run in **System Settings > Privacy & Security**:
 >
-> Recent macOS removed the old right-click > **Open** bypass, so that shortcut no longer works.
+> 1. Open cbNP, and dismiss the warning with **Done**.
+> 2. In **System Settings > Privacy & Security**, scroll to **Security**. “cbNP was blocked to protect your Mac” now appears there — click **Open Anyway**.
+> 3. Open cbNP again and confirm with **Open Anyway**.
+>
+> That entry expires roughly an hour after the blocked launch, so do it in one sitting; if it is gone, launch the app again to bring it back. Recent macOS removed the old right-click > **Open** bypass, so that shortcut does nothing. Only the first launch needs any of this.
 
 The link is pinned to a release asset because the filename carries its version, so it has to be updated here on every release. A `/releases/latest/download/` URL would survive on its own, but only once releases ship the image under the unversioned name `cbNP.dmg`.
 
