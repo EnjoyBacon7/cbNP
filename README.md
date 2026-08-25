@@ -28,57 +28,6 @@ The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the back
 >
 > That entry expires roughly an hour after the blocked launch, so do it in one sitting; if it is gone, launch the app again to bring it back. Recent macOS removed the old right-click > **Open** bypass, so that shortcut does nothing. Only the first launch needs any of this.
 
-The link is pinned to a release asset because the filename carries its version, so it has to be updated here on every release. A `/releases/latest/download/` URL would survive on its own, but only once releases ship the image under the unversioned name `cbNP.dmg`.
-
-## Building and running
-
-### From Xcode
-
-```bash
-open cbNP.xcodeproj
-```
-
-Select the `cbNP` scheme and press **⌘R**. The app launches into the menu bar (no Dock icon); click the menu bar icon to open the popover. Quit it with the **Quit** button in the popover.
-
-### From the command line
-
-Build and launch a Debug build:
-
-```bash
-xcodebuild -scheme cbNP -configuration Debug -derivedDataPath build build
-open build/Build/Products/Debug/cbNP.app
-```
-
-For a Release build, use `-configuration Release` (output lands under `build/Build/Products/Release/`).
-
-### Cutting a release
-
-Bump the version, commit it, then release:
-
-```bash
-scripts/bump-version.sh 4.1.0
-git commit -am 'chore: bump version to 4.1.0'
-scripts/release.sh
-```
-
-The two are separate on purpose. `bump-version.sh` edits tracked source (`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, across every build configuration so Debug and Release cannot drift); `release.sh` only reads the committed version and refuses to run against a dirty tree or an existing tag, so a published binary always corresponds to a commit.
-
-`release.sh` builds unsigned and then re-signs the bundle, so the free personal team set in the Xcode project keeps working for local development without conflicting with the Developer ID identity used for distribution. Nested code inside `mediaremote_adapter` is signed before the enclosing bundle, which notarization requires.
-
-The script needs two one-time credentials:
-
-1. A **Developer ID Application** certificate for the LOGAMES team (`D793768BHW`): Xcode > Settings > Accounts > LOGAMES > Manage Certificates > **+** > Developer ID Application.
-2. A notarytool keychain profile, using an [app-specific password](https://appleid.apple.com):
-
-   ```bash
-   xcrun notarytool store-credentials cbNP-notary \
-     --apple-id <apple-id> --team-id D793768BHW --password <app-specific-password>
-   ```
-
-Neither credential is set up yet, so `release.sh` stops at its identity check and published builds are development-signed and unnotarized — which is what the Gatekeeper note under [Install](#install) describes.
-
-To build a DMG by hand instead, build a Release `.app`, stage it next to an `/Applications` shortcut, and `hdiutil create -format UDZO`.
-
 ## Usage
 
 Click the menu bar icon to open the popover, then configure:
@@ -92,36 +41,72 @@ Click the menu bar icon to open the popover, then configure:
 
 ## Endpoint protocol
 
-The app sends JSON text frames over the WebSocket connection.
+The app sends JSON text frames over the WebSocket connection. It never expects a reply — anything the server sends back is ignored.
 
-Periodic heartbeats:
+### Heartbeat
+
+Sent once immediately after connecting, then every 45 seconds. A heartbeat that fails to send marks the connection as dropped.
 
 ```json
 { "type": "heartbeat" }
 ```
 
-Track updates (sent when the playing track changes or on a forced refresh):
+### Update
+
+Sent right after connecting, and afterwards whenever a poll finds a different track `id` than the last one sent. Polls happen on the configured **Interval**; an unchanged track produces no frame.
 
 ```json
 {
   "type": "update",
   "payload": {
-    "track": "string",
-    "artist": "string",
-    "album": "string",
-    "id": "string",
-    "artwork": "string (base64-encoded image)"
+    "name": "Idioteque",
+    "artist": "Radiohead",
+    "album": "Kid A",
+    "artwork": "iVBORw0KGgoAAAANSUhEUgAA…",
+    "id": "1109714933"
   },
-  "auth": "string (token, may be empty)"
+  "auth": ""
 }
 ```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `payload.name` | string | Track title. |
+| `payload.artist` | string | |
+| `payload.album` | string | |
+| `payload.artwork` | string | Base64-encoded image data, no data-URI prefix. Empty string when the source returns no artwork. |
+| `payload.id` | string | Track identifier from the source; used to detect track changes. |
+| `auth` | string | The configured **Token**. Empty string when no token is set. |
+
+Every field is always present. Strings may be empty, but are never `null`.
+
+## Building from source
+
+Open the project and run it from Xcode:
+
+```bash
+open cbNP.xcodeproj
+```
+
+Select the `cbNP` scheme and press **⌘R**. The app launches into the menu bar (no Dock icon); click the menu bar icon to open the popover. Quit it with the **Quit** button in the popover.
+
+Or build and launch from the command line:
+
+```bash
+xcodebuild -scheme cbNP -configuration Debug -derivedDataPath build build
+open build/Build/Products/Debug/cbNP.app
+```
+
+For a Release build, use `-configuration Release` (output lands under `build/Build/Products/Release/`).
+
+Packaging and signing a release is documented in [`docs/RELEASING.md`](docs/RELEASING.md).
 
 ## Configuration and logs
 
 - Preferences: `~/Library/Application Support/cbNP/Pref.json`
 - Logs: `~/Library/Application Support/cbNP/error.log` (rotated at 512 KB; tokens are redacted)
 
-Preferences written by the legacy Python implementation (`media_player` snake_case key) are read for backward compatibility.
+Preferences saved by the Python version are read as-is, so settings carry over on upgrade.
 
 ## Credits
 
