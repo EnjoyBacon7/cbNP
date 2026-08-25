@@ -19,9 +19,9 @@ cd "$REPO_ROOT"
 BUILD_DIR="$REPO_ROOT/build"
 APP="$BUILD_DIR/Build/Products/Release/cbNP.app"
 ENTITLEMENTS="$REPO_ROOT/cbNP.xcodeproj/App.entitlements"
-# Stable name, no version: the download link on bizeul.cam resolves
-# /releases/latest/download/cbNP.dmg, which only works if every release ships
-# this exact filename. The version lives in the tag.
+# Stable name, no version, so that /releases/latest/download/cbNP.dmg resolves
+# and the download link on bizeul.cam stops needing an edit per release. Until
+# a release actually ships this filename, that link stays pinned to an asset.
 DMG="$REPO_ROOT/cbNP.dmg"
 
 VERSION="$(grep -m1 -E 'MARKETING_VERSION = ' cbNP.xcodeproj/project.pbxproj \
