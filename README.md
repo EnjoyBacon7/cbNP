@@ -14,7 +14,13 @@ The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the back
 
 ## Install
 
-Download the latest `cbNP-x.y.z.dmg` from the [Releases](https://github.com/EnjoyBacon7/cbNP/releases) page, open it, and drag **cbNP** to **Applications**. The app is signed with a development certificate but not notarized, so on first launch right-click it and choose **Open** to clear Gatekeeper, then confirm.
+[Download cbNP.dmg](https://github.com/EnjoyBacon7/cbNP/releases/latest/download/cbNP.dmg), open it, and drag **cbNP** to **Applications**.
+
+> **The app is signed with a development certificate but is not notarized by Apple**, so macOS blocks the first launch with “cbNP cannot be opened because Apple cannot check it for malicious software”. To run it anyway: open cbNP once and dismiss that warning, then go to **System Settings > Privacy & Security**, scroll to the message about cbNP being blocked, and click **Open Anyway**. Only the first launch needs this.
+>
+> Recent macOS removed the old right-click > **Open** bypass, so that shortcut no longer works.
+
+Every release ships the disk image under the unversioned name `cbNP.dmg` so that link always resolves to the newest one; the version is carried by the tag.
 
 ## Building and running
 
@@ -37,18 +43,33 @@ open build/Build/Products/Debug/cbNP.app
 
 For a Release build, use `-configuration Release` (output lands under `build/Build/Products/Release/`).
 
-### Packaging a DMG
+### Cutting a release
 
-Build a Release `.app`, then stage it alongside an `/Applications` shortcut and create a compressed disk image:
+Bump the version, commit it, then release:
 
 ```bash
-xcodebuild -scheme cbNP -configuration Release -derivedDataPath build build
-
-stage=$(mktemp -d)
-cp -R build/Build/Products/Release/cbNP.app "$stage/"
-ln -s /Applications "$stage/Applications"
-hdiutil create -volname "cbNP" -srcfolder "$stage" -ov -format UDZO cbNP.dmg
+scripts/bump-version.sh 4.1.0
+git commit -am 'chore: bump version to 4.1.0'
+scripts/release.sh
 ```
+
+The two are separate on purpose. `bump-version.sh` edits tracked source (`MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`, across every build configuration so Debug and Release cannot drift); `release.sh` only reads the committed version and refuses to run against a dirty tree or an existing tag, so a published binary always corresponds to a commit.
+
+`release.sh` builds unsigned and then re-signs the bundle, so the free personal team set in the Xcode project keeps working for local development without conflicting with the Developer ID identity used for distribution. Nested code inside `mediaremote_adapter` is signed before the enclosing bundle, which notarization requires.
+
+The script needs two one-time credentials:
+
+1. A **Developer ID Application** certificate for the LOGAMES team (`D793768BHW`): Xcode > Settings > Accounts > LOGAMES > Manage Certificates > **+** > Developer ID Application.
+2. A notarytool keychain profile, using an [app-specific password](https://appleid.apple.com):
+
+   ```bash
+   xcrun notarytool store-credentials cbNP-notary \
+     --apple-id <apple-id> --team-id D793768BHW --password <app-specific-password>
+   ```
+
+Neither credential is set up yet, so `release.sh` stops at its identity check and published builds are development-signed and unnotarized — which is what the Gatekeeper note under [Install](#install) describes.
+
+To build a DMG by hand instead, build a Release `.app`, stage it next to an `/Applications` shortcut, and `hdiutil create -format UDZO`.
 
 ## Usage
 
