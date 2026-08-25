@@ -2,6 +2,10 @@
 
 A native macOS menu bar app that reads now-playing data and posts it to a WebSocket endpoint. It supports Apple Music and Spotify (via AppleScript) and any media app via a bundled MediaRemote adapter.
 
+<p align="center">
+<img src="./assets/logo.png" alt="cbNP logo" width="200"/>
+</p>
+
 The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the background. macOS only.
 
 > This is the Swift rewrite of cbNP and the actively maintained version.
