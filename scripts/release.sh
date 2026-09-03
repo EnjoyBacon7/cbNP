@@ -1,31 +1,26 @@
 #!/bin/bash
-# Build, Developer ID-sign, notarize, and staple a cbNP release.
+# Build, package, and verify a cbNP release DMG.
 #
 # Takes no version argument: the version is whatever is committed in the Xcode
 # project. Use scripts/bump-version.sh to change it, commit that, then run this.
-# Local dev builds keep using the free personal team configured in the project;
-# this script builds unsigned and re-signs, so the two never fight over
-# CODE_SIGN_IDENTITY.
 #
-# Prerequisites (one-time, see README):
-#   - a "Developer ID Application" identity in the login keychain
-#   - a notarytool keychain profile named $NOTARY_PROFILE
+# cbNP ships development-signed and not notarized. There is no Developer ID
+# Application certificate for this project, so Gatekeeper blocks the first
+# launch and the README tells users how to allow it. Nothing here needs Apple
+# credentials, an app-specific password, or network access.
 set -euo pipefail
 
-NOTARY_PROFILE="${NOTARY_PROFILE:-cbNP-notary}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 BUILD_DIR="$REPO_ROOT/build"
 APP="$BUILD_DIR/Build/Products/Release/cbNP.app"
-ENTITLEMENTS="$REPO_ROOT/cbNP.xcodeproj/App.entitlements"
-# Stable name, no version, so that /releases/latest/download/cbNP.dmg resolves
-# and the download link on bizeul.cam stops needing an edit per release. Until
-# a release actually ships this filename, that link stays pinned to an asset.
-DMG="$REPO_ROOT/cbNP.dmg"
 
 VERSION="$(grep -m1 -E 'MARKETING_VERSION = ' cbNP.xcodeproj/project.pbxproj \
   | sed -E 's/.*= ([^;]+);.*/\1/')"
+# Versioned name: the README download link points at this exact filename, so it
+# has to be bumped there on every release.
+DMG="$REPO_ROOT/cbNP-$VERSION.dmg"
 echo "==> releasing version $VERSION"
 
 # --- guards -------------------------------------------------------------
@@ -42,29 +37,14 @@ if git rev-parse "v$VERSION" >/dev/null 2>&1; then
   exit 1
 fi
 
-IDENTITY="$(security find-identity -v -p codesigning \
-  | grep "Developer ID Application" \
-  | head -1 | sed -E 's/.*"(.*)"/\1/')"
-if [ -z "$IDENTITY" ]; then
-  echo "error: no 'Developer ID Application' identity in the keychain." >&2
-  echo "       Xcode > Settings > Accounts > LOGAMES > Manage Certificates >" >&2
-  echo "       + > Developer ID Application" >&2
-  exit 1
-fi
-echo "==> signing identity: $IDENTITY"
-
-if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
-  echo "error: notarytool profile '$NOTARY_PROFILE' not found. Create it with:" >&2
-  echo "       xcrun notarytool store-credentials $NOTARY_PROFILE \\" >&2
-  echo "         --apple-id <your-apple-id> --team-id D793768BHW --password <app-specific-password>" >&2
-  exit 1
-fi
-
 # --- build --------------------------------------------------------------
-echo "==> building Release (unsigned; re-signed below)"
+# Signed by the project's own automatic "Apple Development" identity, which
+# also applies App.entitlements. No re-signing step, so local development and
+# release builds cannot disagree about the identity.
+echo "==> building Release"
 rm -rf "$BUILD_DIR" "$DMG"
 xcodebuild -scheme cbNP -configuration Release -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGNING_ALLOWED=NO build >/dev/null
+  build >/dev/null
 
 BUILT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
   "$APP/Contents/Info.plist")"
@@ -73,24 +53,8 @@ if [ "$BUILT_VERSION" != "$VERSION" ]; then
   exit 1
 fi
 
-# --- sign, inside out ---------------------------------------------------
-# Nested code must be signed before the enclosing bundle, or the outer
-# signature seals a hash that no longer matches.
-sign() {
-  codesign --force --sign "$IDENTITY" --options runtime --timestamp "$@"
-}
-
-echo "==> signing nested binaries"
-ADAPTER="$APP/Contents/Resources/mediaremote_adapter"
-sign "$ADAPTER/MediaRemoteAdapter.framework/Versions/A/MediaRemoteAdapter"
-sign "$ADAPTER/MediaRemoteAdapter.framework"
-sign "$ADAPTER/MediaRemoteAdapterTestClient"
-
-echo "==> signing app bundle"
-sign --entitlements "$ENTITLEMENTS" "$APP"
-
 echo "==> verifying signature"
-codesign --verify --deep --strict --verbose=2 "$APP"
+codesign --verify --strict --verbose=2 "$APP"
 
 # --- package ------------------------------------------------------------
 echo "==> building $DMG"
@@ -99,22 +63,27 @@ trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "cbNP" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
-codesign --force --sign "$IDENTITY" --timestamp "$DMG"
 
-# --- notarize -----------------------------------------------------------
-echo "==> submitting to Apple for notarization (this takes a few minutes)"
-xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+# --- verify what users actually download --------------------------------
+# Check the copy inside the image, not the one that was staged: a bad copy or a
+# broken signature should fail here, not on someone else's Mac.
+echo "==> verifying packaged app"
+MOUNT="$(hdiutil attach "$DMG" -nobrowse -readonly | grep -o '/Volumes/.*' | head -1)"
+trap 'hdiutil detach "$MOUNT" >/dev/null 2>&1 || true; rm -rf "$STAGE"' EXIT
 
-echo "==> stapling"
-xcrun stapler staple "$DMG"
-xcrun stapler validate "$DMG"
+PACKAGED_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
+  "$MOUNT/cbNP.app/Contents/Info.plist")"
+if [ "$PACKAGED_VERSION" != "$VERSION" ]; then
+  echo "error: packaged app reports $PACKAGED_VERSION, expected $VERSION." >&2
+  exit 1
+fi
+codesign --verify --strict "$MOUNT/cbNP.app"
 
-# The real test: what Gatekeeper says about the app a user just downloaded.
-echo "==> Gatekeeper assessment"
-spctl --assess --type execute --verbose=4 "$APP"
+hdiutil detach "$MOUNT" >/dev/null
+trap 'rm -rf "$STAGE"' EXIT
 
 echo
-echo "Done. $DMG is signed, notarized, and stapled."
-echo "Publish it — the asset name must stay cbNP.dmg for the download link:"
+echo "Done. $(basename "$DMG") is built and verified (development-signed, not notarized)."
+echo "Publish it, then point the README download link at the new asset:"
 echo "  git tag v$VERSION && git push origin v$VERSION"
 echo "  gh release create v$VERSION \"$DMG\" --title \"cbNP $VERSION\" --notes '...'"
