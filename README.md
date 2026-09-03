@@ -18,7 +18,7 @@ The app lives in the menu bar (`LSUIElement`, no Dock icon) and runs in the back
 
 ## Install
 
-[Download cbNP-4.0.2.dmg](https://github.com/EnjoyBacon7/cbNP/releases/download/v4.0.2/cbNP-4.0.2.dmg), open it, and drag **cbNP** to **Applications**.
+[Download cbNP-4.0.3.dmg](https://github.com/EnjoyBacon7/cbNP/releases/download/v4.0.3/cbNP-4.0.3.dmg), open it, and drag **cbNP** to **Applications**.
 
 > **The app is signed with a development certificate and is not notarized by Apple**, so macOS blocks the first launch — “Apple could not verify ‘cbNP’ is free of malware”. The app has to be allowed to run in **System Settings > Privacy & Security**:
 >
