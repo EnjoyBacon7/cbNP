@@ -15,7 +15,6 @@ struct ContentView: View {
             footer
         }
         .frame(width: 320)
-        .onAppear { viewModel.startIfNeeded() }
     }
 
     // MARK: - Header
